@@ -1,0 +1,4 @@
+Archival game development assets should be stored in this folder, but not committed to Git.
+
+Instead, they should be fetched from Daniel Z's server.
+Please contact him for more information. 🙂

@@ -1,0 +1,10 @@
+# Keep these folders in Git, but ignore everything inside them
+/assets/*
+!/assets/.gitkeep
+
+/build/*
+!/build/.gitkeep
+
+# Ignore IDE-specific metadata
+/.idea/
+/.vscode/
