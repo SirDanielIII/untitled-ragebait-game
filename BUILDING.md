@@ -78,7 +78,9 @@ Both commands should print compiler version information.
 
 ## CMake
 
-Download the "Windows x64 ZIP" version of CMake from their download page: https://cmake.org/download/
+Download the "Windows x64 ZIP" version of CMake (Binary Distribution) from their download page: https://cmake.org/download/
+
+(Direct Link: [https://github.com/Kitware/CMake/releases/download/v4.4.3/cmake-4.4.3-windows-x86_64.msi](https://github.com/Kitware/CMake/releases/download/v4.4.3/cmake-4.4.3-windows-x86_64.zip))
 
 Extract the ZIP into your "Tools" directory.
 
