@@ -1,0 +1,18 @@
+# Supported YAML subset: sections with two-space-indented number/bool settings.
+# Units: pixels, seconds, pixels/second, pixels/second^2, characters/second.
+window:
+  width: 1600
+  height: 900
+  target_fps: 60
+  show_fps: false
+audio:
+  master_volume: 0.5
+  muted: false
+player:
+  move_speed: 260
+  jump_speed: 620
+  gravity: 1500
+dialogue:
+  characters_per_second: 40
+session:
+  last_level: 0
