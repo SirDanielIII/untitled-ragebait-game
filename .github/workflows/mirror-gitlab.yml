@@ -15,6 +15,5 @@ jobs:
           git clone --bare \
             https://github.com/SirDanielIII/untitled-ragebait-game.git \
             repo.git
-
           git -C repo.git push --mirror \
             "https://oauth2:${GITLAB_TOKEN}@gitlab.caslab.queensu.ca/21dz23/untitled-ragebait-game.git"
