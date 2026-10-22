@@ -7,6 +7,7 @@ namespace rage
 {
 enum class LevelId { Tutorial, SideToSide, Climbing, Final };
 
+    //Remake this why is it a struct
 struct LevelDefinition
 {
     LevelId id;
