@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Mirror master to GitLab
+      - name: Mirror master to Group 07 GitLab
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
         run: |
@@ -19,6 +19,6 @@ jobs:
             https://github.com/SirDanielIII/untitled-ragebait-game.git \
             repo.git
 
-          git -C repo.git push --force \
-            "https://oauth2:${GITLAB_TOKEN}@gitlab.caslab.queensu.ca/21dz23/untitled-ragebait-game.git" \
+          git -C repo.git push \
+            "https://oauth2:${GITLAB_TOKEN}@gitlab.caslab.queensu.ca/f26-cisc-cmpe-3201/group-07/untitled-ragebait-game.git" \
             refs/heads/master:refs/heads/master
