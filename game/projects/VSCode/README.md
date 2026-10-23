@@ -1,5 +1,5 @@
-## VSCode Project
+# VS Code workspace
 
-It uses the provided Makefile in src/Makefile to build project.
+Open `main.code-workspace` to work from the repository root. Follow the [build instructions](../../../BUILDING.md#3-visual-studio-code) to configure CMake Tools with source directory `${workspaceFolder}/game` and build directory `${workspaceFolder}/build/vscode`.
 
-VSCode workspace (tasks.json, launch.json...) are configured for source files in ../../src directory.
+Build, run and debug the `untitled-ragebait-game` target through CMake Tools. The existing `.vscode/tasks.json` and `.vscode/launch.json` at the repository root invoke the legacy Makefile; they are not part of the current CMake workflow.

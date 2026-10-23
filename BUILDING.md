@@ -1,6 +1,6 @@
 # 🚀 Building the Game
 
-This project uses **CMake**, **MinGW/GCC**, and **raylib**.
+The game uses **C++20**, **CMake 3.24 or newer**, and **raylib**. This guide covers Windows desktop builds with **MinGW/GCC**.
 
 > The game source lives in `game`.  
 > VS Code and CLion use separate build folders under `build`.
@@ -20,6 +20,7 @@ This project uses **CMake**, **MinGW/GCC**, and **raylib**.
     - [Select the Compiler](#select-the-compiler)
     - [Configure](#configure)
     - [Build](#build)
+    - [Run and Debug with CMake Tools](#run-and-debug-with-cmake-tools)
 - [4. CLion](#4-clion)
     - [Open the Project](#open-the-project)
     - [Set the Toolchain](#set-the-toolchain)
@@ -32,6 +33,8 @@ This project uses **CMake**, **MinGW/GCC**, and **raylib**.
     - [VS Code hides `.exe` files](#vs-code-hides-exe-files)
     - [Wrong build directory](#wrong-build-directory)
     - [PowerShell `where cmake` does nothing](#powershell-where-cmake-does-nothing)
+- [Runtime assets and source layout](#runtime-assets-and-source-layout)
+- [Checking a change](#checking-a-change)
 
 ---
 
@@ -49,7 +52,7 @@ You may use a different location, but update the paths in the examples according
 
 ## C/C++ Compiler
 
-Install a Windows C/C++ compiler such as **MinGW-w64 / GCC**.
+Install a Windows C/C++ compiler with C++20 support, such as **MinGW-w64 / GCC**.
 
 If you need a tutorial, you can watch this one: https://youtu.be/3OUu7t9nsFk.
 
@@ -78,9 +81,7 @@ Both commands should print compiler version information.
 
 ## CMake
 
-Download the "Windows x64 ZIP" version of CMake (Binary Distribution) from their download page: https://cmake.org/download/
-
-(Direct Link: [https://github.com/Kitware/CMake/releases/download/v4.4.3/cmake-4.4.3-windows-x86_64.msi](https://github.com/Kitware/CMake/releases/download/v4.4.3/cmake-4.4.3-windows-x86_64.zip))
+Download the Windows x64 ZIP binary distribution of **CMake 3.24 or newer** from the [CMake download page](https://cmake.org/download/). The `3.30` in `cmake_minimum_required(VERSION 3.24...3.30)` sets the policy compatibility level, not a maximum supported CMake version.
 
 Extract the ZIP into your "Tools" directory.
 
@@ -108,11 +109,7 @@ Verify:
 cmake --version
 ```
 
-You should see something similar to:
-
-```text
-cmake version 4.x.x
-```
+Confirm that the reported version is at least 3.24.
 
 > [!IMPORTANT]
 > WinLibs may include its own copy of CMake at:
@@ -191,7 +188,7 @@ CISC_320_RagebaitGame/
 ```
 
 > [!NOTE]
-> raylib is downloaded automatically by CMake through `FetchContent` during the first successful configure.
+> CMake first tries an installed raylib package through `FetchContent`'s `FIND_PACKAGE_ARGS`. If none is found, it downloads raylib 6.0 during configuration. The installed-package lookup does not specify a version constraint.
 
 ---
 
@@ -220,7 +217,7 @@ and open:
 game/projects/VSCode/main.code-workspace
 ```
 
-The workspace should be configured to show the parent project directory so you can access `assets`, `build`, and `game` in one VS Code window.
+The workspace opens the repository root so you can access `assets`, `build`, and `game` in one VS Code window.
 
 ---
 
@@ -230,10 +227,10 @@ Open VS Code settings:
 
 ```text
 Ctrl+Shift+P
-→ Preferences: Open User Settings (JSON)
+→ Preferences: Open Workspace Settings (JSON)
 ```
 
-Make sure CMake Tools uses the standalone CMake installation and VSCode opens the correct directory by adding the following settings:
+Add the following settings to the workspace's existing `settings` object. This selects CMake and sets the source and build directories for this project:
 
 ```json
 {
@@ -319,6 +316,18 @@ The resulting files will be generated under:
 build/vscode/
 ```
 
+For a single-configuration Windows build, the executable is:
+
+```text
+build/vscode/untitled-ragebait-game/untitled-ragebait-game.exe
+```
+
+## Run and Debug with CMake Tools
+
+Use `CMake: Set Launch/Debug Target` to select `untitled-ragebait-game`, then run `CMake: Run Without Debugging` or `CMake: Debug` from the Command Palette.
+
+The existing root `.vscode/tasks.json` and `.vscode/launch.json` invoke the legacy Makefile. Use the CMake Tools commands above for the current workflow.
+
 ---
 
 # 4. CLion
@@ -374,11 +383,13 @@ File
 → CMake
 ```
 
-And set the **Build directory** to:
+Set the **Build directory** to an absolute path under your repository checkout, for example:
 
 ```text
-/CISC_320_RagebaitGame/build/clion
+C:/Game_Dev_Projects/CISC_320_RagebaitGame/build/clion
 ```
+
+Replace `C:/Game_Dev_Projects/CISC_320_RagebaitGame` with the actual location of your checkout.
 
 ---
 
@@ -429,7 +440,7 @@ SSL Trust Anchors:
 SSL certificate verification failed
 ```
 
-the IDE is probably using the CMake executable bundled with WinLibs/MinGW.
+CMake could not find the trusted certificates needed to verify the download. Check which CMake executable the IDE is using; if it is the WinLibs/MinGW copy, try the standalone Kitware installation described above.
 
 Check available CMake executables:
 
@@ -537,3 +548,25 @@ or:
 ```
 
 instead.
+
+## Runtime assets and source layout
+
+CMake stages `game/resources/` on every build of the game target, including asset-only edits. Desktop builds copy it beside the executable. With an Emscripten toolchain and `PLATFORM=Web`, CMake stages it in `${CMAKE_BINARY_DIR}/resources` for preloading and emits `untitled-ragebait-game.html`. Desktop is the tested target; browser persistence still needs IDBFS integration. The UI font is `game/resources/fonts/ARCADEPI.TTF`; runtime PNGs belong in `game/resources/art/`. Archival source artwork stays in the root `assets/` folder. See [ART_ASSETS.md](docs/ART_ASSETS.md) for filenames and [LEVEL_AUTHORING.md](docs/LEVEL_AUTHORING.md) for level code.
+
+Start at `game/src/main.cpp` for the level handler and frame loop. Level code is in `game/src/levels/`, menus and dialogue are in `game/src/ui/`, and window/settings/rendering support is in `game/src/engine/`. Player movement lives in `game/src/player/player.cpp`. Tests are in `game/tests`. CMake recursively discovers sources and headers under `game/src/`, including new feature folders, and test `.cpp` files under `game/tests/`. Add files and build normally; no manual source list is needed. Levels use numbered folders `level_0/` through `level_3/`. The original VS2022 template projects are not maintained; use the CMake workflow above.
+
+Makefile and Ninja generators produce `compile_commands.json` in the build directory. Other generators ignore `CMAKE_EXPORT_COMPILE_COMMANDS`.
+
+## Checking a change
+
+After configuring a desktop build, run from the repository root with your compiler's `bin` directory on `PATH`:
+
+```powershell
+cmake --build build/clion --parallel 4
+ctest --test-dir build/clion --output-on-failure
+& './build/clion/untitled-ragebait-game/untitled-ragebait-game.exe' --smoke-test --capture-dir './build/test-captures'
+```
+
+Use `build/vscode` instead if that is your configured build directory. These commands assume a single-configuration Windows build. Multi-configuration generators add a folder such as `Debug` below `untitled-ragebait-game`; pass `--config Debug` to the build and `-C Debug` to CTest, and adjust the executable path.
+
+CTest registers `game_self_tests` when `BUILD_TESTING=ON` (the default) and `PLATFORM` is not `Web`. It runs the same window-free checks as the executable's `--self-test` option. If your desktop build has testing disabled, reconfigure with `-DBUILD_TESTING=ON` to register the test. Test sources and the executable's test options are compiled regardless of `BUILD_TESTING`. The smoke test creates a hidden window and checks rendering, menu interactions and all four levels without writing user preferences. See the [code guide](docs/CODE_GUIDE.md) for test coverage.
