@@ -12,7 +12,7 @@ Group project for CISC 320 Group 7 (2026 Fall).
 4. Hunter Anwar (Documentation (Web Dev / UI Designer))
 5. Ethan See-To (Interface Specialist)
 6. Noah Segal (Programmer)
-7. Reya Patel (`tbd`)
+7. Reya Patel (Programmer)
 
 ## Start developing here
 
