@@ -55,6 +55,15 @@ add_dependencies(${PROJECT_NAME} stage_game_resources)
 #set(raylib_VERBOSE 1)
 target_link_libraries(${PROJECT_NAME} raylib)
 
+# Use the same GLFW backend as raylib for native window aspect-ratio constraints.
+if (NOT DEFINED PLATFORM OR "${PLATFORM}" STREQUAL "Desktop")
+    if (NOT TARGET glfw)
+        find_package(glfw3 CONFIG REQUIRED)
+    endif()
+    target_link_libraries(${PROJECT_NAME} glfw)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE RAGE_DESKTOP_GLFW)
+endif()
+
 # Web builds require an Emscripten toolchain and PLATFORM=Web.
 if ("${PLATFORM}" STREQUAL "Web")
     # Emit untitled-ragebait-game.html and preload the staged resources.

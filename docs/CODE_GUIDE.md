@@ -88,11 +88,11 @@ Stage-specific events belong in `OnReset` and `OnUpdate`. See [LEVEL_AUTHORING.m
 
 ## Rendering
 
-UI layout and input use a 1600 by 900 logical coordinate system. `GameWindow::Destination` fits that rectangle into the window and snaps its letterbox to framebuffer pixels. `Resources::ResizeCanvas` allocates a target at that physical size. The final screen copy is one-to-one and preserves the target RGB without applying edge alpha twice. DPI conversion uses the display scale directly; dividing by rounded logical window dimensions introduces errors at fractional scales.
+Everything draws into one fixed 1600 by 900 render texture. `GameWindow::Draw` renders the game, then scales that texture to `Destination()`. Normal desktop windows keep a 16:9 content area through GLFW's native resize constraint and fill the window without bars. Maximized, fullscreen and browser windows fit the canvas with letterboxing. `MouseOnCanvas` reverses the same transform for input. DPI conversion uses the display scale rather than rounded logical window dimensions.
 
-`BeginCanvasCoordinates` applies the logical-to-output scale to geometry. The world camera uses `OutputCamera` to include the same scale. Clip rectangles use `BeginClip`; raw scissor coordinates would otherwise remain in logical pixels.
+Draw UI directly in canvas coordinates. The level uses an ordinary Raylib `BeginMode2D(camera)` / `EndMode2D()` pair for the world. `resources.BeginClip(bounds)` and `EndScissorMode()` clip in those same canvas coordinates. Window/context setup lives in `engine/window/game_window.cpp`; asset loading lives in `engine/resources/resources.cpp`.
 
-UI text is drawn in framebuffer coordinates. The custom font is rasterized for each displayed pixel size and cached, with integer text placement and point filtering. Measurement uses that same font size. The cache is cleared on target resize. If the custom font is unavailable, the renderer uses Raylib's default font atlas, which can be scaled. Use the shared text helpers rather than calling `DrawTextEx` with a fixed-size atlas.
+The font loads once at startup. `resources.DrawText` and `resources.MeasureText` use that shared font; missing fonts fall back to Raylib's default. The font and final canvas copy use bilinear filtering. Resizing scales the completed canvas, with no render-target reallocation, font cache or extra UI camera transforms. Keep layout changes in `ui/menus/menus.cpp` and use the shared text helpers.
 
 Placeholder artwork and optional texture slots are described in [ART_ASSETS.md](ART_ASSETS.md).
 
@@ -148,6 +148,6 @@ These paths assume a single-configuration Windows build. Use `build/vscode` for 
 
 Self-tests cover dialogue, config, movement, sliders, navigation, pause/reset and stage hooks. The smoke test uses a hidden Raylib window, synthetic input and real rendering. It checks font fallback, texture replacement, all screens and stage lifecycles.
 
-Rendering tests run at 960x720, 1280x720, 1366x768, 1600x900 and 1920x1080. They compare text against an independent native-size raster and compare the presented viewport against its render target pixel-for-pixel. Captures include menus and level dialogue at each size. Tests do not write user preferences.
+Rendering tests run at 960x540, 1280x720, 1366x768, 1600x900 and 1920x1080. They check the fixed canvas, scaled screen colors, clipping, input mapping and the maximize/fullscreen transitions. On Windows they also exercise the native resize handler for all eight edges and corners. Captures include menus and level dialogue at each size. Tests do not write user preferences.
 
 Desktop is the tested target. Browser startup code is present; browser persistence still requires IDBFS integration.

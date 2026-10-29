@@ -10,6 +10,9 @@
 namespace rage
 {
 void TestLevelAuthoring();
+#if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
+void TestWindowResize(void* handle);
+#endif
 namespace
 {
 void Check(bool condition, const char* message)
@@ -258,80 +261,30 @@ void TestMovement()
     std::cout << "PASS: frame-independent walking, jump/landing, collision, bounds and reset\n";
 }
 
-// Compare UI text against an independent, unscaled Raylib raster at the same
-// physical pixel size. This catches atlas scaling, filtering and subpixel placement.
-void TestNativeText(Resources& resources)
-{
-    if (!resources.HasCustomFont()) return;
-    const float scale = resources.RenderScale();
-    const auto path = (FindResourceDirectory() / uiFontPath).string();
-    const char* message = "Aa Bb 0123 / FONT TEST";
-    const Vector2 position{17.3f, 31.7f};
-    for (const float logicalSize : {18.0f, 24.0f, 35.5f, 68.0f})
-    {
-        const int pixels = std::max(1, static_cast<int>(std::round(logicalSize * scale)));
-        Font referenceFont = LoadFontEx(path.c_str(), pixels, nullptr, 0);
-        Check(IsFontValid(referenceFont), "Could not rasterize the reference font");
-        SetTextureFilter(referenceFont.texture, TEXTURE_FILTER_POINT);
-        const float spacing = std::round(scale);
-        BeginTextureMode(resources.Canvas());
-        ClearBackground(BLACK);
-        resources.BeginCanvasCoordinates();
-        resources.DrawText(message, position, logicalSize, 1, WHITE);
-        EndMode2D();
-        EndTextureMode();
-        const auto expectedSize = MeasureTextEx(referenceFont, message, static_cast<float>(pixels), spacing);
-        const auto measuredSize = resources.MeasureText(message, logicalSize);
-        Check(Near(expectedSize.x, measuredSize.x * scale, 0.001f), "Layout does not use the displayed font metrics");
-
-        RenderTexture2D reference = LoadRenderTexture(resources.Canvas().texture.width, resources.Canvas().texture.height);
-        BeginTextureMode(reference);
-        ClearBackground(BLACK);
-        DrawTextEx(referenceFont, message, {std::round(position.x * scale), std::round(position.y * scale)},
-                   static_cast<float>(pixels), spacing, WHITE);
-        EndTextureMode();
-        Image actual = LoadImageFromTexture(resources.Canvas().texture);
-        Image expected = LoadImageFromTexture(reference.texture);
-        const auto* actualPixels = static_cast<const unsigned char*>(actual.data);
-        const auto* expectedPixels = static_cast<const unsigned char*>(expected.data);
-        const bool identical = actual.width == expected.width && actual.height == expected.height &&
-            std::equal(actualPixels, actualPixels + actual.width * actual.height * 4, expectedPixels);
-        UnloadImage(actual);
-        UnloadImage(expected);
-        UnloadRenderTexture(reference);
-        UnloadFont(referenceFont);
-        Check(identical, "UI text differs from its native-size raster (resampling blur)");
-    }
-}
-
 void TestCanvasPresentation(const Resources& resources, Rectangle destination)
 {
     Image canvas = LoadImageFromTexture(resources.Canvas().texture);
     ImageFlipVertical(&canvas);
     Image screen = LoadImageFromScreen();
     const auto dpi = WindowPixelScale();
-    const float ratioX = dpi.x;
-    const float ratioY = dpi.y;
-    const int left = static_cast<int>(std::round(destination.x * ratioX));
-    const int top = static_cast<int>(std::round(destination.y * ratioY));
-    Check(canvas.width == static_cast<int>(std::round(destination.width * ratioX)) &&
-          canvas.height == static_cast<int>(std::round(destination.height * ratioY)),
-          "Canvas dimensions do not match the output pixels");
-    bool identical = true;
-    for (int y = 0; y < canvas.height && identical; ++y)
-        for (int x = 0; x < canvas.width; ++x)
-        {
-            const Color a = GetImageColor(canvas, x, y);
-            const Color b = GetImageColor(screen, left + x, top + y);
-            if (a.r != b.r || a.g != b.g || a.b != b.b)
-            {
-                identical = false;
-                break;
-            }
-        }
+    Check(canvas.width == canvasWidth && canvas.height == canvasHeight,
+          "Resizing changed the fixed logical canvas");
+    // Sample solid regions of the real menu, away from filtered text and shape edges.
+    for (const auto point : {Vector2{20, 20}, Vector2{700, 700}, Vector2{730, 730}, Vector2{1500, 800}})
+    {
+        const Color expected = GetImageColor(canvas, static_cast<int>(point.x), static_cast<int>(point.y));
+        const Color actual = GetImageColor(screen,
+            static_cast<int>((destination.x + point.x * destination.width / canvasWidth) * dpi.x),
+            static_cast<int>((destination.y + point.y * destination.height / canvasHeight) * dpi.y));
+        Check(std::abs(expected.r - actual.r) <= 2 && std::abs(expected.g - actual.g) <= 2 &&
+              std::abs(expected.b - actual.b) <= 2, "The scaled canvas is misplaced or discolored");
+    }
+    if (destination.x * dpi.x >= 1)
+        Check(ColorIsEqual(GetImageColor(screen, 0, screen.height / 2), BLACK), "Side letterbox is not black");
+    if (destination.y * dpi.y >= 1)
+        Check(ColorIsEqual(GetImageColor(screen, screen.width / 2, 0), BLACK), "Top letterbox is not black");
     UnloadImage(canvas);
     UnloadImage(screen);
-    Check(identical, "Presenting the canvas changed its pixels (second scaling pass)");
 }
 
 void TestSession()
@@ -410,6 +363,11 @@ int RunSelfTests()
 
 int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
 {
+#if !defined(PLATFORM_WEB)
+    const int monitor = GetCurrentMonitor();
+    Check(GetRenderWidth() <= GetMonitorWidth(monitor) && GetRenderHeight() <= GetMonitorHeight(monitor),
+          "The initial window extends beyond the display after DPI scaling");
+#endif
     // Exercise the actual asset loader and renderer with an isolated temporary export.
     // No real source assets or user preferences are changed.
     if (FileExists((FindResourceDirectory() / uiFontPath).string().c_str()))
@@ -441,12 +399,12 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     }
     std::cout << "PASS: custom font, missing-font fallback and optional texture replacement\n";
     auto click = [&](ActionKind kind, int value = 0) { Frame(0, ClickAction(game, kind, value)); };
-    auto capture = [&](const char* name)
+    auto capture = [&](const char* name, bool screen = false)
     {
         if (captureDirectory.empty()) return;
         std::filesystem::create_directories(captureDirectory);
-        Image image = LoadImageFromTexture(resources.Canvas().texture);
-        ImageFlipVertical(&image);
+        Image image = screen ? LoadImageFromScreen() : LoadImageFromTexture(resources.Canvas().texture);
+        if (!screen) ImageFlipVertical(&image);
         const auto path = captureDirectory / (std::string(name) + ".png");
         const bool saved = ExportImage(image, path.string().c_str());
         UnloadImage(image);
@@ -508,14 +466,27 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
         click(ActionKind::OpenLevels);
     }
     click(ActionKind::MainMenu);
-    SetWindowSize(960, 720);
+#if defined(RAGE_DESKTOP_GLFW)
+    MaximizeWindow();
+    PollInputEvents();
+    Frame(0, {});
+    Frame(0, {});
+    Check(IsWindowMaximized(), "Maximize did not release the window aspect ratio");
+    capture("maximized", true);
+    TestCanvasPresentation(resources, Destination());
+    RestoreWindow();
+    PollInputEvents();
+#if defined(_WIN32)
+    TestWindowResize(GetWindowHandle());
+#endif
+#endif
+    SetWindowSize(960, 540);
     Frame(0, {});
     const auto destination = Destination();
-    const auto expected = CanvasDestination(static_cast<float>(GetRenderWidth()), static_cast<float>(GetRenderHeight()));
     const auto dpi = WindowPixelScale();
-    Check(Near(destination.width * dpi.x, std::round(expected.width)) &&
-          Near(destination.height * dpi.y, std::round(expected.height)) &&
-          Near(destination.y * dpi.y, std::round(expected.y)), "Resized render destination failed");
+    Check(Near(destination.width * dpi.x, GetRenderWidth()) &&
+          Near(destination.height * dpi.y, GetRenderHeight()) && Near(destination.x, 0) && Near(destination.y, 0),
+          "A normal window has letterbox bars");
     InputFrame resizedClick = ClickAction(game, ActionKind::OpenSettings);
     const Vector2 windowPoint = {destination.x + resizedClick.mouse.x * destination.width / canvasWidth,
                                 destination.y + resizedClick.mouse.y * destination.height / canvasHeight};
@@ -533,11 +504,9 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     }
     click(ActionKind::Back);
     config.values.showFps = false;
-    for (const auto size : {Vector2{960, 720}, Vector2{1280, 720}, Vector2{1366, 768}, Vector2{1600, 900}, Vector2{1920, 1080}})
+    for (const auto size : {Vector2{960, 540}, Vector2{1280, 720}, Vector2{1366, 768}, Vector2{1600, 900}, Vector2{1920, 1080}})
     {
         SetWindowSize(static_cast<int>(size.x), static_cast<int>(size.y));
-        Frame(0, {});
-        TestNativeText(resources);
         Frame(0, {});
         Frame(0, {});
         TestCanvasPresentation(resources, Destination());
@@ -557,7 +526,24 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
         Frame(0, pause);
         click(ActionKind::MainMenu);
     }
-    std::cout << "PASS: native text pixels, 1:1 presentation, camera/clipping and menus at five window sizes\n";
+#if defined(RAGE_DESKTOP_GLFW)
+    // Exclusive fullscreen invalidates hidden-window readback on some drivers,
+    // so check the mode and viewport after completing the windowed pixel checks.
+    ToggleFullscreen();
+    PollInputEvents();
+    Frame(0, {});
+    Check(IsWindowFullscreen(), "Fullscreen did not release the window aspect ratio");
+    const auto fullscreen = Destination();
+    Check(Near(fullscreen.width / fullscreen.height, 16.0f / 9) &&
+          fullscreen.x >= -0.01f && fullscreen.y >= -0.01f &&
+          fullscreen.x + fullscreen.width <= GetRenderWidth() + 0.01f &&
+          fullscreen.y + fullscreen.height <= GetRenderHeight() + 0.01f,
+          "Fullscreen did not fit the 16:9 canvas within the display");
+    ToggleFullscreen();
+    PollInputEvents();
+    Check(!IsWindowFullscreen(), "Fullscreen did not restore the window");
+#endif
+    std::cout << "PASS: fixed canvas, scaled presentation, native resizing, maximize/fullscreen and menus at five window sizes\n";
     SetWindowSize(config.values.windowWidth, config.values.windowHeight);
     click(ActionKind::Quit);
     Check(game.WantsQuit(), "Graphical quit failed");

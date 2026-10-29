@@ -189,6 +189,8 @@ CISC_320_RagebaitGame/
 
 > [!NOTE]
 > CMake first tries an installed raylib package through `FetchContent`'s `FIND_PACKAGE_ARGS`. If none is found, it downloads raylib 6.0 during configuration. The installed-package lookup does not specify a version constraint.
+>
+> Desktop builds also use GLFW for native 16:9 window resizing. The downloaded raylib supplies it automatically. When using an installed raylib package, install its matching GLFW development package so CMake can find `glfw3`.
 
 ---
 

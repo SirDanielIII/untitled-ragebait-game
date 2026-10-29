@@ -116,6 +116,6 @@ These hazards, lives, checkpoints, death, stage completion, climbing controls an
 
 Menu layouts are in `ui/menus/menus.cpp`. Shared controls are in `ui/`; navigation and settings actions are handled by `main.cpp`.
 
-Use `DrawTextFit(resources, ...)`, `DrawParagraph(resources, ...)` or `resources.DrawText(...)` for UI text. They use the font rasterized for the current output size. Use `resources.BeginClip(...)` for a clip rectangle in logical UI coordinates.
+Use `DrawTextFit(resources, ...)`, `DrawParagraph(resources, ...)` or `resources.DrawText(...)` for UI text. They use the shared font on the fixed 1600 by 900 canvas. Use `resources.BeginClip(...)` for a clip rectangle in canvas coordinates.
 
 Font selection, PNG paths and resource copying are covered in [ART_ASSETS.md](ART_ASSETS.md).

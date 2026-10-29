@@ -10,9 +10,9 @@ inline constexpr const char* uiFontPath = "fonts/ARCADEPI.TTF";
 
 Put runtime fonts in `game/resources/fonts/`. CMake stages the complete `game/resources/` directory on every build of the game target. On desktop it goes beside the executable; see Runtime files below for Web builds. Rebuild and relaunch after changing a font.
 
-The custom font file is read once. The renderer caches a separate glyph atlas for each displayed pixel size and clears that cache when the output size changes. Custom-font text is drawn at integer framebuffer coordinates with a one-to-one atlas scale. Text measurement uses the same atlas as drawing.
+The custom font loads once at startup into a shared 64-pixel glyph atlas. Drawing and measurement use that same font. There is no per-size font cache.
 
-The layout remains 1600 by 900 logical units. The render target matches the output viewport's physical pixels, including HiDPI output, and is copied to the screen without resizing. Glyphs and the final copy use point filtering. The final copy preserves the colors already composited in the target, avoiding a second application of text-edge transparency.
+All drawing uses a fixed 1600 by 900 canvas, scaled to the window with bilinear filtering. Normal window resizing keeps a 16:9 content area without bars; maximized and fullscreen windows allow letterboxing. The final copy preserves the colors already composited in the canvas.
 
 Use the shared text functions for UI:
 
@@ -22,9 +22,9 @@ DrawParagraph(resources, description, {70, 140, 500, 120}, 24, WHITE);
 resources.DrawText("FPS", {1410, 18}, 20, 1, WHITE);
 ```
 
-Positions and sizes above are logical UI coordinates. `Resources` converts them to physical pixels. `resources.MeasureText(text, size)` returns logical dimensions. For UI clipping, use `resources.BeginClip(bounds)` and `EndScissorMode()`.
+Positions and sizes above are canvas coordinates. `resources.MeasureText(text, size)` returns dimensions in those same coordinates. For UI clipping, use `resources.BeginClip(bounds)` and `EndScissorMode()`.
 
-Missing or unreadable fonts fall back to Raylib's default font and log a warning. This fallback uses the default font atlas rather than rasterizing a new atlas for each size, so it can be scaled. The custom-font loader currently requests printable ASCII; supply an explicit codepoint list to the font-loading calls in `engine/resources/resources.cpp` when adding localized text.
+Missing or unreadable fonts fall back to Raylib's default font and log a warning. The custom-font loader currently requests printable ASCII; supply an explicit codepoint list to `LoadFontEx` in `engine/resources/resources.cpp` when adding localized text.
 
 ## Exported artwork
 
