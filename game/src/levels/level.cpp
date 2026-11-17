@@ -15,6 +15,9 @@ namespace rage {
 
     void Level::Reset(const GameConfig &config) {
         player.Reset(definition.spawn);
+        playerAnimator = {};
+        playerAnimator.SetState("idle");
+        playerFacing = Facing::Right;
         elapsedSeconds = 0;
         preferredTextSpeed = config.charactersPerSecond;
         Say(definition.intro);
@@ -43,6 +46,7 @@ namespace rage {
         dialogueDelay = std::max(0.0f, dialogueDelay - dt);
         dialogue.writer.Update(revealTime);
         player.Update(dt, input, config, definition.platforms, definition.world);
+        UpdatePlayerAnimation(dt);
         OnUpdate(dt, input);
         UpdateCamera();
     }
@@ -62,6 +66,34 @@ namespace rage {
         dialogue.writer.Replace(currentCue.text);
     }
 
+    void Level::UpdatePlayerAnimation(float dt) {
+        const auto velocity = player.Velocity();
+        if (velocity.x < 0) playerFacing = Facing::Left;
+        else if (velocity.x > 0) playerFacing = Facing::Right;
+        if (!player.Grounded()) playerAnimator.SetState(velocity.y < 0 ? "jump" : "fall");
+        else playerAnimator.SetState(velocity.x != 0 ? "walk" : "idle");
+        playerAnimator.Update(dt);
+    }
+
+    void Level::SubmitPlayer(RenderQueue &queue, const Resources &resources) const {
+        const auto &assets = resources.Assets();
+        const auto &state = playerAnimator.State();
+        // Missing states fall back so a half-finished set of animations still shows something.
+        const AnimationData *animation = assets.Find(playerAssetId, state);
+        if (!animation && state == "fall") animation = assets.Find(playerAssetId, "jump");
+        if (!animation) animation = assets.Find(playerAssetId, "idle");
+        if (!animation) animation = assets.Find(playerAssetId, "");
+        const Rectangle body = player.Bounds();
+        if (!animation) {
+            // No Game Data rows for the player yet: keep the original drawing at the collision size.
+            queue.Submit(Layer::Middle, [&resources, body] { art::Student(resources, body); });
+            return;
+        }
+        const Vector2 feet{body.x + body.width / 2, body.y + body.height};
+        queue.Submit(assets, *animation, playerAnimator.Frame(*animation), feet, playerFacing,
+                     [&resources](Rectangle bounds, bool) { art::Student(resources, bounds); });
+    }
+
     void Level::UpdateCamera() {
         const auto position = player.Position();
         const auto world = definition.world;
@@ -79,10 +111,17 @@ namespace rage {
         resources.BeginClip(worldViewport);
         DrawRectangleRec(worldViewport, Color{36, 44, 60, 255});
         BeginMode2D(camera);
-        art::LevelBackdrop(resources, definition.backdrop, definition.world, definition.accent);
-        DrawWorld(resources);
-        for (const auto platform: definition.platforms) art::Platform(resources, platform, definition.accent);
-        art::Student(resources, player.Bounds());
+        RenderQueue queue;
+        queue.Submit(Layer::Background, [&] {
+            art::LevelBackdrop(resources, definition.backdrop, definition.world, definition.accent);
+        });
+        queue.Submit(Layer::Middle, [&] {
+            DrawWorld(resources);
+            for (const auto platform: definition.platforms) art::Platform(resources, platform, definition.accent);
+        });
+        SubmitSprites(queue, resources);
+        SubmitPlayer(queue, resources);
+        queue.Flush();
         EndMode2D();
         EndScissorMode();
         DrawTextFit(resources, definition.title, {40, 26, 1380, 44}, 36, definition.accent);

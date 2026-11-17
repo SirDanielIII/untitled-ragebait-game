@@ -52,7 +52,73 @@ Missing textures use the shape drawings in `engine/graphics/placeholder_art.cpp`
 
 Keep labels and button text out of background images. Menus draw text, focus outlines and controls separately. Widget drawing is in `ui/`; colors are in `ui/theme.h`.
 
+These fixed slots still work. New characters, props, hazards and animations should use Game Data instead (next section).
+
 Artwork does not define collision geometry. Edit platforms and hazard bounds in level/gameplay code. Animation, parallax, tile maps and nine-slice panels can be added to the rendering code as those assets are developed.
+
+## Game Data sprites and animations
+
+Sprites and animations are described by the **CISC 320 Game Data** Google Sheet, not by C++ code. For a step-by-step guide to every task (making art in any program, filling in the sheet, placing objects in levels, animating them, troubleshooting), see [game/src/engine/assets/README.md](../game/src/engine/assets/README.md). The game reads an exported copy at startup, loads each PNG once, and draws placeholders for anything that has no art yet. Changing a size, frame count, FPS, pivot or layer in the sheet, or replacing a PNG, takes effect on the next launch without code changes. The sheet is the master copy; never edit the CSV by hand.
+
+### Files
+
+| Path under `game/resources/` | Contents |
+| --- | --- |
+| `data/game_data.csv` | Game Data sheet export (File → Download → Comma-separated values) |
+| `art/static/` | One-frame PNGs (Frames = 1) |
+| `art/animated/` | Sprite strips and grids (Frames > 1) |
+
+The File Name column is looked up in the folder that matches its frame count, then the other folder. A File Name containing a folder, such as `tiles/street.png`, is read from `art/tiles/street.png`.
+
+### Columns
+
+Columns are matched by header text; keep the headers and order from the sheet. Each row is one animation; a static asset is a one-frame animation.
+
+| Column | Accepted values | Blank means |
+| --- | --- | --- |
+| Animation ID | `asset_state`, lowercase with underscores (`player_walk`) | Row skipped |
+| Asset ID | Groups an object's animations (`player_character`) | Row skipped |
+| File Name | PNG name; `none` for an invisible object such as a trigger zone | Placeholder box until the art exists |
+| Frame Width / Height (px) | Size of one frame, whole pixels | Row skipped |
+| Frames | 1 or more | 1 |
+| Frames per Row | Frames in each row of a grid | All frames in one row |
+| FPS | Playback speed | Static: always frame 1 |
+| Loops | `Yes` (idle, walk) or `No` (jump, land: stops on the last frame) | Yes if it has an FPS |
+| Pivot | `bottom-centre` (characters, props), `top-left` (tiles, backgrounds), `centre` (floating objects, effects) | bottom-centre |
+| Faces | `right` (or `left`) for art with a direction; mirrored when the object faces the other way | Never mirrored |
+| Layer | `Background`, `Middle` (player and things it touches), `Foreground`, `UI` | Middle |
+| Notes | Anything; not read by the game | |
+
+Invalid or missing values never stop the game. Each problem is logged at startup with its sheet row, for example `game_data.csv: row 3 (player_walk): FPS "fast" is not a positive number`, and a default is used or the row is skipped. A PNG smaller than its frames need is also logged.
+
+### Placeholders
+
+An animation listed in Game Data without a PNG draws a translucent box at its Frame Width × Frame Height and pivot, so positions do not change when the art arrives. Objects that already had a temporary drawing keep it at the sheet's size; for example, the player keeps the student drawing until `player_character` PNGs exist. Rows with File Name `none` are never drawn and are not reported as missing.
+
+### Player
+
+The player uses Asset ID `player_character` and the states `idle`, `walk`, `jump` (rising) and `fall`. Name the animations `player_idle`, `player_walk`, `player_jump` and `player_fall`, or anything ending in `_<state>` with that Asset ID. A missing `fall` uses `jump`, and any other missing state uses `idle`. Draw the art facing right with Faces = `right`; it is mirrored when the player moves left. With no `player_character` rows, the original drawing is used at the collision-box size.
+
+Sprite size does not change collision. The player's collision box stays 30 × 44 pixels, and its bottom-centre is the sprite's pivot.
+
+### Updating assets
+
+1. Edit the Game Data sheet (and the art in the Assets folder).
+2. Export the sheet: File → Download → Comma-separated values (.csv).
+3. Replace `game/resources/data/game_data.csv` with the download (rename it to `game_data.csv`) and copy new or changed PNGs into `art/static/` or `art/animated/`.
+4. Build and run. CMake copies `game/resources/` on every build; check the console for Game Data warnings.
+5. Commit the CSV and PNGs together.
+
+### Using it in code
+
+```cpp
+const auto& assets = resources.Assets();
+const AnimationData* walk = assets.Find("player_walk");                // by Animation ID
+const AnimationData* same = assets.Find("player_character", "walk");   // by Asset ID + state
+assets.Draw(*walk, animator.Frame(*walk), feetPosition, Facing::Left);  // pivot, flip, placeholder
+```
+
+Use an `Animator` (`engine/assets/animator.h`) per object for its current state and playback time, and a `RenderQueue` to draw in layer order. Levels queue their sprites in `SubmitSprites`; see [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md#layout).
 
 ## Runtime files
 

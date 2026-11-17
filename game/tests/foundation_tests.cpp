@@ -10,6 +10,8 @@
 namespace rage
 {
 void TestLevelAuthoring();
+void TestGameData();
+void TestAssetRendering();
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
 void TestWindowResize(void* handle);
 #endif
@@ -351,6 +353,7 @@ int RunSelfTests()
         TestSliders();
         TestSession();
         TestLevelAuthoring();
+        TestGameData();
         std::cout << "All foundation self-tests passed (no window/audio context required).\n";
         return 0;
     }
@@ -398,6 +401,7 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
               "Artwork did not render or preserve its aspect ratio");
     }
     std::cout << "PASS: custom font, missing-font fallback and optional texture replacement\n";
+    TestAssetRendering();
     auto click = [&](ActionKind kind, int value = 0) { Frame(0, ClickAction(game, kind, value)); };
     auto capture = [&](const char* name, bool screen = false)
     {

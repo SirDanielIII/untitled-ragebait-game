@@ -37,6 +37,7 @@ namespace rage {
             const auto path = directory / artPaths[i];
             if (FileExists(path.string().c_str())) artwork[i] = LoadTexture(path.string().c_str());
         }
+        assets.Load(directory);
         const auto clickPath = directory / "coin.wav";
         if (IsAudioDeviceReady() && FileExists(clickPath.string().c_str())) click = LoadSound(clickPath.string().c_str());
     }

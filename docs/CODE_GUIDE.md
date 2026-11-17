@@ -20,7 +20,9 @@ The current game supports menus, settings, level selection, movement/collision, 
 | Change input bindings | `game/src/engine/input/input.h` |
 | Change default settings | `game/resources/config.yaml` |
 | Add settings keys or validation | `game/src/engine/config/config.cpp` |
-| Choose fonts and artwork | `game/src/engine/resources/asset_paths.h` |
+| Choose fonts and fixed artwork slots | `game/src/engine/resources/asset_paths.h` |
+| Add sprites/animations (no code) | Game Data sheet, exported to `game/resources/data/game_data.csv` ([ART_ASSETS.md](ART_ASSETS.md#game-data-sprites-and-animations)) |
+| Change sprite loading, pivots, flipping or layers | `game/src/engine/assets/` |
 | Change resource loading or window rendering | `game/src/engine/resources/resources.cpp`, `game/src/engine/window/game_window.cpp` |
 
 ## Source layout
@@ -28,7 +30,7 @@ The current game supports menus, settings, level selection, movement/collision, 
 ```text
 game/
   CMakeLists.txt                 Target, dependencies, resource staging and CTest
-  resources/                    Runtime fonts, images, defaults and audio
+  resources/                    Runtime fonts, images, Game Data CSV, defaults and audio
   tests/                        Regression and rendering checks
   projects/VSCode/              Original template workspace (opens repository root)
   projects/VS2022/              Original template projects (not maintained)
@@ -58,6 +60,10 @@ game/
       graphics/placeholder_art.* Fallback drawings for missing artwork
       resources/resources.*     Fonts, textures, audio and render target
       resources/asset_paths.h   Runtime font and optional artwork paths
+      assets/game_data.*        Game Data CSV import, validation and frame math
+      assets/asset_manager.*    Game Data textures, pivots, flipping and placeholders
+      assets/animator.h         Per-object animation state and playback time
+      assets/render_queue.h     Background/Middle/Foreground/UI draw order
 ```
 
 Includes are relative to `game/src`, for example `#include "levels/level.h"`. `src/CMakeLists.txt` uses `GLOB_RECURSE` with `CONFIGURE_DEPENDS`: `.cpp`, `.h` and `.hpp` files under `src/` and `.cpp` tests under `tests/` are discovered recursively. Adding, removing or moving a source file triggers a refresh on the next build. Register new playable levels in `main.cpp` as described in the level guide.
