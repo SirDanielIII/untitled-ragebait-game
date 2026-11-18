@@ -29,15 +29,15 @@ Every PNG must follow these rules:
 3. **Animations go in one image, frames side by side**, left to right in play order, all the same size, with **no gaps or borders** between them. Four 32×32 frames make one 128×32 PNG.
 4. **Grids** (for example a tile set) fill each row left to right, then the next row down. Every cell is one frame of the same size.
 5. **Draw characters facing right** (or consistently left). The game mirrors them when they turn around, so never draw a separate left-facing version.
-6. **Size:** the game draws one PNG pixel as one game pixel (then the level camera zooms 1.5×). Until the team picks a global pixel scale, export at **200%** so sprites are not tiny. When scaling pixel art, always use a whole number (200%, 300%) and **nearest-neighbour** scaling. Other scaling modes blur it.
+6. **Size:** export at **100%**. The game draws every PNG pixel as `pixelScale` (2) game pixels, set in `asset_manager.h`, and the level camera then zooms 2×, so each art pixel ends up 4×4 on screen (the same as Stardew Valley). Enter the PNG's real size as Frame Width and Height. If you ever do scale pixel art, use a whole number (200%, 300%) and **nearest-neighbour** scaling; other modes blur it.
 
 Where to find this in common programs:
 
 | Program | Single image | Animation strip |
 | --- | --- | --- |
-| Aseprite / LibreSprite | File → Export As, Resize 200% | File → Export Sprite Sheet: Sheet Type Horizontal Strip; Border Padding, Spacing and Inner Padding all 0 |
+| Aseprite / LibreSprite | File → Export As (Resize 100%) | File → Export Sprite Sheet: Sheet Type Horizontal Strip; Border Padding, Spacing and Inner Padding all 0 |
 | Piskel | Export → PNG | Export → PNG → spritesheet, 1 row |
-| Krita / GIMP / Photoshop | Export as PNG; scale with Nearest Neighbour | Lay the frames out side by side on one canvas, then export as PNG |
+| Krita / GIMP / Photoshop | Export as PNG | Lay the frames out side by side on one canvas, then export as PNG |
 
 Save the PNG straight into `game/resources/art/static/` (one frame) or `game/resources/art/animated/` (several frames). File names should be lowercase with underscores, e.g. `school_desk.png`.
 
@@ -65,8 +65,8 @@ Example rows:
 ```
 Animation ID,Asset ID,File Name,Frame Width (px),Frame Height (px),Frames,Frames per Row,FPS,Loops,Pivot,Faces,Layer,Notes
 school_desk,school_desk,school_desk.png,32,32,1,,,,bottom-centre,,Middle,static prop
-player_walk,player_character,player_walk.png,32,64,6,,12,Yes,bottom-centre,right,Middle,looping animation
-player_jump,player_character,player_jump.png,32,64,3,,10,No,bottom-centre,right,Middle,plays once
+player_walk,player_character,player_walk.png,16,32,6,,12,Yes,bottom-centre,right,Middle,looping animation
+player_jump,player_character,player_jump.png,16,32,3,,10,No,bottom-centre,right,Middle,plays once
 street_tiles,street_tiles,street_tiles.png,16,16,8,4,,,top-left,,Background,4x2 grid of tiles
 anvil_fall,anvil,,32,32,4,,8,No,centre,,Foreground,art not made yet: placeholder
 exit_trigger,trigger,none,64,64,1,,,,top-left,,Middle,invisible
@@ -215,8 +215,8 @@ Placement in levels stays the same because positions refer to the pivot, not the
 | `row N ...` warnings at startup | A bad value in that sheet row. The message says which column and what was used instead. |
 | `... is 64x32 but ... needs at least 128x32` | The PNG has fewer frames than the Frames column, or Frame Width is wrong. |
 | Sprite floats above the ground | Empty space at the bottom of the PNG; crop it. Or the Pivot isn't `bottom-centre`. |
-| Sprite is tiny | It was exported at 100%. Export at 200% and double Frame Width and Height. |
-| Sprite is blurry | Scaled without nearest-neighbour. Re-export with nearest-neighbour scaling. |
+| Sprite is the wrong size | Frame Width and Height must match the PNG exported at 100%. The overall size is set by `pixelScale` in `asset_manager.h`. |
+| Sprite is blurry | The PNG was resized in the art program. Export at 100%, or use nearest-neighbour scaling if you must resize. |
 | Animation doesn't move | FPS is blank or 0, or Frames is 1. |
 | Animation stops on the last frame | Loops is `No`. |
 | Character faces the wrong way | Faces is wrong, or blank (never mirrored). |

@@ -29,6 +29,10 @@ namespace rage {
     inline constexpr const char *staticArtFolder = "art/static";     // One-frame PNGs.
     inline constexpr const char *animatedArtFolder = "art/animated"; // Strips and grids.
 
+    // Every Game Data sprite is drawn this many times its png size.
+    // Artists export at 100%; a 16x32 png is drawn 32x64 in the world.
+    inline constexpr float pixelScale = 2.0f;
+
     // What Draw() actually did. Mostly useful for tests.
     enum class DrawResult { Texture, Placeholder, Invisible };
 
@@ -73,16 +77,16 @@ namespace rage {
         std::size_t TextureCount() const { return textures.size(); }
 
         // The rectangle a frame covers when its pivot is placed at `position`.
-        // Example: a 48x80 bottom-centre frame at (100, 650) covers x 76-124, y 570-650.
-        static Rectangle Bounds(const AnimationData &animation, Vector2 position, float scale = 1);
+        // Example: a 48x80 bottom-centre frame at (100, 650) covers x 52-148, y 490-650.
+        static Rectangle Bounds(const AnimationData &animation, Vector2 position, float scale = pixelScale);
 
         // Draws frame `frame` with its pivot at `position`, in world or canvas coordinates.
         //   facing:      which way the object faces now. The image is mirrored when this is
         //                the opposite of the row's Faces value.
         //   placeholder: what to draw if the PNG is missing. Leave empty for a plain box.
-        //   scale, tint: optional size multiplier and colour tint (WHITE = unchanged).
+        //   scale, tint: optional size multiplier (default pixelscale) and colour tint (WHITE = unchanged).
         DrawResult Draw(const AnimationData &animation, int frame, Vector2 position, Facing facing = Facing::None,
-                        const PlaceholderDrawer &placeholder = {}, float scale = 1, Color tint = WHITE) const;
+                        const PlaceholderDrawer &placeholder = {}, float scale = pixelScale, Color tint = WHITE) const;
 
         // The default stand-in for missing art: a translucent box with a cross.
         // `directional` adds a notch on the side the object faces.

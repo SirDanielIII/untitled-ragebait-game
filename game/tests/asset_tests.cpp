@@ -147,6 +147,13 @@ void TestFramesAndPlayback()
     Check(x == 0 && y == 0, "Top-left pivot failed");
     PivotOffset(Pivot::Centre, 48, 80, x, y);
     Check(x == 24 && y == 40, "Centre pivot failed");
+    AnimationData sprite;
+    sprite.frameWidth = 16;
+    sprite.frameHeight = 32;
+    sprite.pivot = Pivot::BottomCentre;
+    const Rectangle drawn = AssetManager::Bounds(sprite, {100, 650});
+    Check(drawn.width == 16 * pixelScale && drawn.height == 32 * pixelScale, "Pixel scale was not applied");
+    Check(drawn.x + drawn.width / 2 == 100 && drawn.y + drawn.height == 650, "Scaled sprite moved off its pivot");
     Check(ShouldFlip(Facing::Right, Facing::Left) && !ShouldFlip(Facing::Right, Facing::Right) &&
           !ShouldFlip(Facing::None, Facing::Left), "Facing flip rule failed");
 

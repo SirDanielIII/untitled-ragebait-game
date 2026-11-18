@@ -10,7 +10,7 @@
 namespace rage {
     Level::Level(const LevelDefinition &definition) : definition(definition) {
         camera.offset = {worldViewport.width / 2, worldViewport.y + worldViewport.height / 2};
-        camera.zoom = 1.5f;
+        camera.zoom = 2.0f;
     }
 
     void Level::Reset(const GameConfig &config) {
