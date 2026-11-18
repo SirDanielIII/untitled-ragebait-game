@@ -42,8 +42,7 @@ namespace rage {
             }
 
             void OnUpdate(float dt, const InputFrame &input) override {
-                // TODO: Implement your event system here. No scheduling rules are imposed.
-                // Available: GetPlayer(), Dialogue(), ElapsedSeconds(), Say(...).
+                // Update active hazards here; register scripted triggers with Events() in the constructor.
                 (void) dt;
                 (void) input;
             }

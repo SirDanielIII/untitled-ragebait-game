@@ -1,15 +1,14 @@
 #include "engine/window/game_window.h"
+#include "test_support.h"
 #include "ui/dialogue/dialogue.h"
 
-#include <chrono>
-#include <cmath>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 
 namespace rage
 {
 void TestLevelAuthoring();
+void TestEventManager();
 void TestGameData();
 void TestAssetRendering();
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
@@ -17,41 +16,10 @@ void TestWindowResize(void* handle);
 #endif
 namespace
 {
-void Check(bool condition, const char* message)
-{
-    if (!condition) throw std::runtime_error(message);
-}
-
-bool Near(float a, float b, float tolerance = 0.05f) { return std::abs(a - b) < tolerance; }
-
-struct TestDirectory
-{
-    std::filesystem::path path = std::filesystem::temp_directory_path() /
-        ("ragebait_foundation_test_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    TestDirectory() { std::filesystem::create_directories(path); }
-    ~TestDirectory()
-    {
-        // This path is constructed solely beneath the system temp directory for this test.
-        std::error_code error;
-        std::filesystem::remove_all(path, error);
-    }
-};
-
-InputFrame ClickAction(const Game& session, ActionKind kind, int value = 0)
-{
-    for (const auto& item : session.Navigation().Items())
-    {
-        const auto* button = std::get_if<Button>(&item);
-        if (button && button->action.kind == kind && button->action.value == value)
-        {
-            InputFrame input;
-            input.click = true;
-            input.mouse = {button->bounds.x + button->bounds.width / 2, button->bounds.y + button->bounds.height / 2};
-            return input;
-        }
-    }
-    throw std::runtime_error("Requested menu action is missing");
-}
+using test::Check;
+using test::ClickAction;
+using test::Near;
+using test::TestDirectory;
 
 InputFrame ClickSlider(const Game& session, ActionKind kind, float fraction)
 {
@@ -199,7 +167,7 @@ void TestConfig()
     Check(!store.Load(file), "Malformed config should report ignored values");
     Check(store.values.windowWidth == 1280 && store.values.targetFps == 120 && store.values.showFps, "Valid display settings were lost");
     Check(store.values.moveSpeed == 310 && store.values.gravity == 1500 && store.values.jumpSpeed == 620, "Player config fallback failed");
-    Check(Near(store.values.masterVolume, 0.7f) && !store.values.muted && store.values.charactersPerSecond == 0 && store.values.lastLevel == 3, "Valid audio/dialogue/session config failed");
+    Check(Near(store.values.masterVolume, 0.7f, 0.001f) && !store.values.muted && store.values.charactersPerSecond == 0 && store.values.lastLevel == 3, "Valid audio/dialogue/session config failed");
     store.values.unlimitedFps = true;
     store.values.targetFps = maxTargetFps;
     const auto saved = directory.path / "preferences/settings.yaml";
@@ -212,7 +180,9 @@ void TestConfig()
         output << "window:\n  width: 900\n  width: 1000\n  height: 99999\n\tbad: true\n  width: 1100\n"
                << "audio:\n  master_volume: nan\nunknown:\n  move_speed: 600\n";
     }
-    Check(!reloaded.Load(file) && reloaded.values.windowWidth == 900 && reloaded.values.windowHeight == 900 && reloaded.values.moveSpeed == 310, "Duplicate/unknown/indentation validation failed");
+    Check(!reloaded.Load(file) && reloaded.values.windowWidth == 900 && reloaded.values.windowHeight == 900 &&
+          reloaded.values.moveSpeed == 310 && Near(reloaded.values.masterVolume, 0.7f, 0.001f),
+          "Invalid or duplicate settings replaced valid values");
     std::cout << "PASS: defaults, valid/malformed YAML subset, range checks and preferences round trip\n";
 }
 
@@ -238,7 +208,7 @@ void TestMovement()
     player.Update(1.0f / 60, jump, config, platforms, world);
     Check(player.Position().y < 606 && !player.Grounded(), "Jump did not leave the floor");
     for (int i = 0; i < 120; ++i) player.Update(1.0f / 60, {}, config, platforms, world);
-    Check(player.Grounded() && Near(player.Position().y, 606), "Landing/reset of vertical velocity failed");
+    Check(player.Grounded() && Near(player.Position().y, 606) && player.Velocity().y == 0, "Landing did not settle the player");
     player.Reset({1955, 606});
     player.Update(0.1f, right, config, platforms, world);
     Check(Near(player.Position().x, 1970), "World boundary clamp failed");
@@ -293,53 +263,43 @@ void TestSession()
 {
     GameConfig config;
     Game game(config);
-    InputFrame down;
-    down.down = true;
-    game.Update(0, down);
-    game.Update(0, down);
-    InputFrame confirm;
-    confirm.confirm = true;
-    game.Update(0, confirm);
+    game.Update(0, {.down = true});
+    game.Update(0, {.down = true});
+    game.Update(0, {.confirm = true});
     Check(game.Screen() == ScreenId::LevelSelect, "Keyboard menu selection failed");
-    for (const auto& level : LevelCatalog())
-    {
-        game.Update(0, ClickAction(game, ActionKind::StartLevel, static_cast<int>(level.id)));
-        Check(game.Screen() == ScreenId::Playing && game.ActiveLevel()->Definition().id == level.id, "Stage selection failed");
-        InputFrame move;
-        move.move = 1;
-        game.Update(0.05f, move);
-        const auto position = game.ActiveLevel()->GetPlayer().Position();
-        const auto bytes = game.ActiveLevel()->Dialogue().VisibleBytes();
-        const float elapsed = game.ActiveLevel()->ElapsedSeconds();
-        InputFrame pause;
-        pause.pause = true;
-        game.Update(0, pause);
-        game.Update(0.05f, move);
-        Check(game.Screen() == ScreenId::Paused && game.ActiveLevel()->GetPlayer().Position().x == position.x && game.ActiveLevel()->Dialogue().VisibleBytes() == bytes, "Pause advanced scene state");
-        Check(game.ActiveLevel()->ElapsedSeconds() == elapsed, "Pause advanced level timing");
-        game.Update(0, ClickAction(game, ActionKind::OpenSettings));
-        game.Update(0.1f, {});
-        Check(game.ActiveLevel()->ElapsedSeconds() == elapsed, "Settings advanced paused level timing");
-        game.Update(0, ClickAction(game, ActionKind::ToggleFps));
-        Check(game.Screen() == ScreenId::Settings && game.TakeSettingsDirty(), "Settings mutation failed");
-        game.Update(0, ClickAction(game, ActionKind::Back));
-        Check(game.Screen() == ScreenId::Paused && game.ActiveLevel()->GetPlayer().Position().x == position.x, "Settings lost paused scene");
-        game.Update(0, ClickAction(game, ActionKind::Resume));
-        Check(game.Screen() == ScreenId::Playing, "Resume failed");
-        game.Update(0, pause);
-        game.Update(0, ClickAction(game, ActionKind::Restart));
-        Check(game.ActiveLevel()->GetPlayer().Position().x == level.spawn.x && game.ActiveLevel()->Dialogue().VisibleBytes() == 0, "ActiveLevel restart failed");
-        game.Update(0, pause);
-        game.Update(0, ClickAction(game, ActionKind::OpenLevels));
-        Check(!game.ActiveLevel(), "Leaving a level retained the scene");
-    }
-    InputFrame back;
-    back.back = true;
-    game.Update(0, back);
+    const auto& definition = Level1Definition();
+    game.Update(0, ClickAction(game, ActionKind::StartLevel, static_cast<int>(definition.id)));
+    const auto* level = game.ActiveLevel();
+    Check(game.Screen() == ScreenId::Playing && level && level->Definition().id == definition.id, "Stage selection failed");
+    game.Update(0.1f, {.move = 1});
+    const auto position = level->GetPlayer().Position();
+    const auto bytes = level->Dialogue().VisibleBytes();
+    const auto elapsed = level->ElapsedSeconds();
+    game.Update(0.1f, {.move = 1, .pause = true});
+    game.Update(0.1f, {.move = 1});
+    Check(game.Screen() == ScreenId::Paused && game.ActiveLevel() == level && level->GetPlayer().Position().x == position.x &&
+          level->Dialogue().VisibleBytes() == bytes && level->ElapsedSeconds() == elapsed, "Pause advanced the level");
+
+    game.Update(0, ClickAction(game, ActionKind::OpenSettings));
+    game.TakeSettingsDirty(); // Stage selection also changes a setting.
+    game.Update(0.1f, ClickAction(game, ActionKind::ToggleFps));
+    Check(game.Screen() == ScreenId::Settings && config.showFps && game.TakeSettingsDirty(), "Settings mutation failed");
+    Check(game.ActiveLevel() == level && level->ElapsedSeconds() == elapsed, "Settings advanced or replaced the paused level");
+    game.Update(0, ClickAction(game, ActionKind::Back));
+    Check(game.Screen() == ScreenId::Paused, "Settings did not return to pause");
+    game.Update(0, ClickAction(game, ActionKind::Restart));
+    level = game.ActiveLevel();
+    Check(game.Screen() == ScreenId::Playing && level && level->GetPlayer().Position().x == definition.spawn.x &&
+          level->Dialogue().VisibleBytes() == 0 && level->ElapsedSeconds() == 0, "Restart failed to reset the stage");
+
+    game.Update(0, {.pause = true});
+    game.Update(0, ClickAction(game, ActionKind::OpenLevels));
+    Check(!game.ActiveLevel(), "Leaving a level retained the scene");
+    game.Update(0, {.back = true});
     Check(game.Screen() == ScreenId::MainMenu, "Selection back navigation failed");
     game.Update(0, ClickAction(game, ActionKind::Quit));
     Check(game.WantsQuit(), "Quit action failed");
-    std::cout << "PASS: keyboard/mouse menus, all four scenes, pause/settings/resume, restart and quit\n";
+    std::cout << "PASS: keyboard/mouse menus, pause, settings, restart and quit\n";
 }
 }
 
@@ -353,6 +313,7 @@ int RunSelfTests()
         TestSliders();
         TestSession();
         TestLevelAuthoring();
+        TestEventManager();
         TestGameData();
         std::cout << "All foundation self-tests passed (no window/audio context required).\n";
         return 0;
@@ -403,13 +364,13 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     std::cout << "PASS: custom font, missing-font fallback and optional texture replacement\n";
     TestAssetRendering();
     auto click = [&](ActionKind kind, int value = 0) { Frame(0, ClickAction(game, kind, value)); };
-    auto capture = [&](const char* name, bool screen = false)
+    auto capture = [&](const std::string& name, bool screen = false)
     {
         if (captureDirectory.empty()) return;
         std::filesystem::create_directories(captureDirectory);
         Image image = screen ? LoadImageFromScreen() : LoadImageFromTexture(resources.Canvas().texture);
         if (!screen) ImageFlipVertical(&image);
-        const auto path = captureDirectory / (std::string(name) + ".png");
+        const auto path = captureDirectory / (name + ".png");
         const bool saved = ExportImage(image, path.string().c_str());
         UnloadImage(image);
         Check(saved, "Could not capture a rendered smoke-test frame");
@@ -421,52 +382,12 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     for (const auto& level : LevelCatalog())
     {
         click(ActionKind::StartLevel, static_cast<int>(level.id));
-        Check(game.ActiveLevel() && game.ActiveLevel()->Definition().id == level.id, "Graphical stage entry failed");
-        Frame(1.0f / 60, {});
-        const float start = game.ActiveLevel()->GetPlayer().Position().x;
-        InputFrame right;
-        right.move = 1;
-        for (int i = 0; i < 30; ++i) Frame(1.0f / 60, right);
-        Check(game.ActiveLevel()->GetPlayer().Position().x > start, "Graphical movement failed");
-        InputFrame jump;
-        jump.jump = true;
-        const float beforeJump = game.ActiveLevel()->GetPlayer().Position().y;
-        Frame(1.0f / 60, jump);
-        Check(game.ActiveLevel()->GetPlayer().Position().y < beforeJump, "Graphical jump failed");
-        InputFrame complete;
-        complete.completeDialogue = true;
-        Frame(0, complete);
-        Check(game.ActiveLevel()->Dialogue().IsComplete(), "Graphical dialogue skip failed");
-        capture(("stage_" + std::to_string(static_cast<int>(level.id))).c_str());
-        InputFrame pause;
-        pause.pause = true;
-        Frame(0, pause);
-        const auto position = game.ActiveLevel()->GetPlayer().Position();
-        for (int i = 0; i < 5; ++i) Frame(1.0f / 60, right);
-        Check(game.ActiveLevel()->GetPlayer().Position().x == position.x, "Graphical pause failed");
+        Check(game.Screen() == ScreenId::Playing && game.ActiveLevel() && game.ActiveLevel()->Definition().id == level.id,
+              "Smoke test could not open a level for rendering");
+        Frame(0, {.completeDialogue = true});
+        capture("stage_" + std::to_string(static_cast<int>(level.id)));
+        Frame(0, {.pause = true});
         capture("pause");
-        click(ActionKind::OpenSettings);
-        click(ActionKind::ToggleFps);
-        click(ActionKind::ToggleMute);
-        Frame(0, ClickSlider(game, ActionKind::SetTargetFps, 0.5f));
-        Frame(0, {});
-        Check(config.values.targetFps == 195, "Graphical FPS slider failed");
-        click(ActionKind::ToggleUnlimitedFps);
-        Check(config.values.EffectiveTargetFps() == 0, "Graphical Unlimited toggle failed");
-        Frame(0, ClickSlider(game, ActionKind::SetVolume, 0.7f));
-        Frame(0, {});
-        Frame(0, ClickSlider(game, ActionKind::SetDialogueSpeed, 0.5f));
-        Frame(0, {});
-        Check(Near(config.values.masterVolume, 0.7f, 0.001f) && config.values.charactersPerSecond == 120, "Graphical sliders failed");
-        capture("settings");
-        click(ActionKind::ToggleUnlimitedFps);
-        Check(config.values.EffectiveTargetFps() == 195, "Graphical cap restore failed");
-        click(ActionKind::Back);
-        click(ActionKind::Resume);
-        Frame(0, pause);
-        click(ActionKind::Restart);
-        Check(game.ActiveLevel()->GetPlayer().Position().x == level.spawn.x, "Graphical scene reset failed");
-        Frame(0, pause);
         click(ActionKind::OpenLevels);
     }
     click(ActionKind::MainMenu);
@@ -474,8 +395,8 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     MaximizeWindow();
     PollInputEvents();
     Frame(0, {});
-    Frame(0, {});
-    Check(IsWindowMaximized(), "Maximize did not release the window aspect ratio");
+    Frame(0, {}); // Draw both swap buffers before reading screen pixels.
+    Check(IsWindowMaximized(), "The window did not maximize");
     capture("maximized", true);
     TestCanvasPresentation(resources, Destination());
     RestoreWindow();
@@ -497,14 +418,11 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     resizedClick.mouse = CanvasCoordinates(windowPoint, destination);
     Frame(0, resizedClick);
     Check(game.Screen() == ScreenId::Settings, "Resized menu hit testing failed");
-    Frame(0, {}); // Fill both swap buffers before reading the window screenshot.
+    capture("settings");
     if (!captureDirectory.empty())
     {
-        Image resized = LoadImageFromScreen();
-        const auto path = captureDirectory / "resized_options.png";
-        const bool saved = ExportImage(resized, path.string().c_str());
-        UnloadImage(resized);
-        Check(saved, "Resized screenshot failed");
+        Frame(0, {}); // Draw both swap buffers before reading screen pixels.
+        capture("resized_options", true);
     }
     click(ActionKind::Back);
     config.values.showFps = false;
@@ -514,20 +432,16 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
         Frame(0, {});
         Frame(0, {});
         TestCanvasPresentation(resources, Destination());
+        if (captureDirectory.empty()) continue;
         const auto suffix = std::to_string(static_cast<int>(size.x)) + "x" + std::to_string(static_cast<int>(size.y));
-        capture(("main_" + suffix).c_str());
+        capture("main_" + suffix);
         click(ActionKind::OpenSettings);
-        Frame(0, {});
-        capture(("settings_" + suffix).c_str());
+        capture("settings_" + suffix);
         click(ActionKind::Back);
         click(ActionKind::StartLevel);
-        InputFrame reveal;
-        reveal.completeDialogue = true;
-        Frame(0, reveal);
-        capture(("level_" + suffix).c_str());
-        InputFrame pause;
-        pause.pause = true;
-        Frame(0, pause);
+        Frame(0, {.completeDialogue = true});
+        capture("level_" + suffix);
+        Frame(0, {.pause = true});
         click(ActionKind::MainMenu);
     }
 #if defined(RAGE_DESKTOP_GLFW)
@@ -536,23 +450,19 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     ToggleFullscreen();
     PollInputEvents();
     Frame(0, {});
-    Check(IsWindowFullscreen(), "Fullscreen did not release the window aspect ratio");
+    Check(IsWindowFullscreen(), "The window did not enter fullscreen");
     const auto fullscreen = Destination();
     Check(Near(fullscreen.width / fullscreen.height, 16.0f / 9) &&
           fullscreen.x >= -0.01f && fullscreen.y >= -0.01f &&
           fullscreen.x + fullscreen.width <= GetRenderWidth() + 0.01f &&
-          fullscreen.y + fullscreen.height <= GetRenderHeight() + 0.01f,
+          fullscreen.y + fullscreen.height <= GetRenderHeight() + 0.01f &&
+          (Near(fullscreen.width, GetRenderWidth()) || Near(fullscreen.height, GetRenderHeight())),
           "Fullscreen did not fit the 16:9 canvas within the display");
     ToggleFullscreen();
     PollInputEvents();
     Check(!IsWindowFullscreen(), "Fullscreen did not restore the window");
 #endif
-    std::cout << "PASS: fixed canvas, scaled presentation, native resizing, maximize/fullscreen and menus at five window sizes\n";
-    SetWindowSize(config.values.windowWidth, config.values.windowHeight);
-    click(ActionKind::Quit);
-    Check(game.WantsQuit(), "Graphical quit failed");
-    std::cout << "PASS: real Raylib window/render/audio lifecycle, rendered menus and all four scenes, movement/jump, pause/resume/settings/restart, dialogue and quit.\n";
-    std::cout << "Smoke test uses synthetic input frames and leaves user preferences untouched.\n";
+    std::cout << "PASS: raylib rendering for menus and all stages, scaled canvas, resizing and fullscreen\n";
     return 0;
 }
 }

@@ -4,7 +4,7 @@
 
 Each numbered level has a folder under `game/src/levels/`, containing its layout, dialogue and gameplay code.
 
-The four current levels provide placeholder platforms, movement, camera follow and opening dialogue. Their `OnReset` and `OnUpdate` hooks contain TODOs for stage-specific gameplay. The objectives below describe the intended content; reaching a door or classroom does not currently complete a level.
+The four current levels provide placeholder platforms, movement, camera follow and opening dialogue. Level 0 also includes a scripted hallway sequence. The objectives below describe the intended content; reaching a door or classroom does not currently complete a level.
 
 Paths in this guide are relative to `game/src/` unless shown with a `game/` prefix.
 
@@ -58,23 +58,49 @@ void OnReset() override
 
 void OnUpdate(float dt, const InputFrame& input) override
 {
-    // Check triggers and update active events.
+    // Update active hazards and notify Events() about interactions as they occur.
 }
 ```
 
-`dt` is gameplay time in seconds, clamped to 0-0.1 by `GameWindow::Frame`. Store event flags, timers and other mutable data as class members. Event dependencies and scheduling belong in this code; there is no shared event system yet.
+`dt` is gameplay time in seconds, clamped to 0-0.1 by `GameWindow::Frame`. Store timers, hazard state and other mutable gameplay data as class members.
 
 | Member | Purpose |
 | --- | --- |
 | `GetPlayer()` | Read position, bounds, velocity and grounded state |
+| `MutablePlayer()` | Call player gameplay methods from the stage |
 | `Dialogue()` | Read the current message and its reveal state |
 | `ElapsedSeconds()` | Read time since the stage was reset |
-| `Say(DialogueCue)` | Replace the current message |
+| `Say(DialogueCue)` | Replace the current message and return its ID |
+| `Events()` | Register events, post notifications and query completion |
 | `Definition()` | Read the authored level data |
 
-The update order is dialogue, player movement, `OnUpdate`, then camera follow. Pause and Settings suspend scene updates. `CreateLevel` calls the registered `MakeLevelN` factory, then calls `Reset` after construction. `Reset` restores the player, elapsed time and opening dialogue, calls `OnReset`, and updates the camera. Restart Stage and R call `Reset` on the existing level; they do not reconstruct it, so clear all stage-specific state in `OnReset`. Opening Main Menu or Dev Level Select destroys the active level.
+The update order is dialogue, player movement, `OnUpdate`, event evaluation, then camera follow. Pause and Settings suspend scene updates. Restart Stage and R clear event completion and pending notifications, restore the player, elapsed time and opening dialogue, then call `OnReset` and update the camera. Clear stage-specific state in `OnReset`. Opening Main Menu or Dev Level Select destroys the active level and its events.
 
 Keep update logic out of drawing functions. Use the application's existing frame loop rather than adding a loop inside a stage.
+
+## Scripted events
+
+Register events in the level constructor. Use a unique ID, an execution callback, and optionally a condition, a notification matcher, or both. Capture `this` to read and modify the owning level. Register prerequisites before the events that depend on them. The manager rejects duplicate IDs and unregistered dependencies, including self-references and cycles.
+
+```cpp
+Events().RegisterEvent({
+    .id = "at-door",
+    .condition = [this] { return GetPlayer().Position().x >= 1100.0f; },
+    .execute = [this] { doorCue = Say({.text = "Try the handle."}); }
+});
+Events().RegisterEvent({
+    .id = "door-cue-revealed",
+    .execute = [this] { handleEnabled = true; },
+    .dependencies = {"at-door"},
+    .matchesNotification = [this](const EventNotification& notice) {
+        return notice.topic == dialogueEvents::revealCompleted && notice.sourceId == doorCue;
+    }
+});
+```
+
+In this example `doorCue` and `handleEnabled` are level members. See Level 0 for a complete sequence. `Events().IsCompleted(id)` becomes true after an event's callback returns and stays true until the level resets. Add `.repeatable = true` to run again when a condition goes false and then true, or when another matching notification arrives in a later update.
+
+Post notifications with `Events().Notify({"door.interact", doorId})`. Events share the notifications for one update, and each event runs at most once per update. If its prerequisites or condition are unmet when evaluated, it needs a fresh notification. Notifications posted inside event callbacks are processed on the next update.
 
 ## Dialogue
 
@@ -102,7 +128,7 @@ Call `Say` from stage logic to start another message:
 Say({.text = "The stairs do that sometimes.", .speedMultiplier = 1.5f});
 ```
 
-Call it once when the event starts. Calling it every frame resets the typewriter every frame. `Say` replaces text immediately; queueing and interruptions are part of the stage's event logic.
+Each `Say` gets a new message ID, even when the text is identical. `CurrentDialogueId()` also exposes the opening cue's ID. The level posts `dialogueEvents::revealStarted` when the start delay expires and `dialogueEvents::revealCompleted` when the full message becomes visible, including skips and instant reveals. Match both the topic and the message ID. Replay keeps the same ID and never emits either milestone twice for that message.
 
 ## Design notes
 

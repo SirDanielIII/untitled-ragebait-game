@@ -12,14 +12,15 @@ void TestWindowResize(void* handle)
 {
     const auto window = static_cast<HWND>(handle);
     RECT outer{}, client{};
-    GetWindowRect(window, &outer);
-    GetClientRect(window, &client);
-    const int frameWidth = (outer.right - outer.left) - client.right;
-    const int frameHeight = (outer.bottom - outer.top) - client.bottom;
+    if (!GetWindowRect(window, &outer) || !GetClientRect(window, &client))
+        throw std::runtime_error("Could not read the native window bounds");
+    const int frameWidth = (outer.right - outer.left) - (client.right - client.left);
+    const int frameHeight = (outer.bottom - outer.top) - (client.bottom - client.top);
     for (int edge = WMSZ_LEFT; edge <= WMSZ_BOTTOMRIGHT; ++edge)
     {
         RECT proposed{100, 100, 1100, 800};
-        SendMessage(window, WM_SIZING, edge, reinterpret_cast<LPARAM>(&proposed));
+        if (!SendMessage(window, WM_SIZING, edge, reinterpret_cast<LPARAM>(&proposed)))
+            throw std::runtime_error("Native window did not handle the resize");
         const int width = proposed.right - proposed.left - frameWidth;
         const int height = proposed.bottom - proposed.top - frameHeight;
         if (std::abs(width * 9 - height * 16) > 16)
