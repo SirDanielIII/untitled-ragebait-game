@@ -35,19 +35,35 @@ namespace rage {
         class Level0 final : public Level {
         public:
             Level0() : Level(Level0Definition()) {
+                Events().RegisterEvent({
+                    .id = "hallway-cue",
+                    .condition = [this] { return GetPlayer().Position().x >= 350.0f && Dialogue().IsComplete(); },
+                    .execute = [this] { hallwayCue = Say({.text = "Wait here a moment. Let your eyes adjust."}); }
+                });
+                Events().RegisterEvent({
+                    .id = "hallway-cue-revealed",
+                    .execute = [this] { followUpTime = ElapsedSeconds() + 2.0f; },
+                    .dependencies = {"hallway-cue"},
+                    .matchesNotification = [this](const EventNotification &notice) {
+                        return notice.topic == dialogueEvents::revealCompleted && notice.sourceId == hallwayCue;
+                    }
+                });
+                Events().RegisterEvent({
+                    .id = "hallway-follow-up",
+                    .condition = [this] { return ElapsedSeconds() >= followUpTime && Dialogue().IsComplete(); },
+                    .execute = [this] { Say({.text = "That should do it. The front door is still ahead."}); },
+                    .dependencies = {"hallway-cue-revealed"}
+                });
             }
 
         private:
             void OnReset() override {
-                // TODO: Reset this level's event flags, timers and hazards here.
+                hallwayCue = 0;
+                followUpTime = 0.0f;
             }
 
-            void OnUpdate(float dt, const InputFrame &input) override {
-                // TODO: Implement your event system here. No scheduling rules are imposed.
-                // Available: GetPlayer(), Dialogue(), ElapsedSeconds(), Say(...).
-                (void) dt;
-                (void) input;
-            }
+            DialogueMessageId hallwayCue = 0;
+            float followUpTime = 0.0f;
         };
     }
 

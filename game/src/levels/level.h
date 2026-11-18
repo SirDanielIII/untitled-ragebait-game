@@ -4,6 +4,7 @@
 #include "engine/assets/animator.h"
 #include "engine/assets/render_queue.h"
 #include "engine/resources/asset_paths.h"
+#include "levels/event_manager.h"
 #include <vector>
 #include <string>
 #include "player/player.h"
@@ -18,6 +19,12 @@ namespace rage {
 
     // Explicit values keep existing saved settings compatible.
     enum class LevelId { Level0 = 0, Level1 = 1, Level2 = 2, Level3 = 3 };
+
+    using DialogueMessageId = std::uint64_t;
+    namespace dialogueEvents {
+        inline constexpr char revealStarted[] = "dialogue.reveal_started";
+        inline constexpr char revealCompleted[] = "dialogue.reveal_completed";
+    }
 
     struct DialogueCue {
         std::string text;
@@ -58,13 +65,16 @@ namespace rage {
         const LevelDefinition &Definition() const { return definition; }
         const Player &GetPlayer() const { return player; }
         const Typewriter &Dialogue() const { return dialogue.writer; }
+        DialogueMessageId CurrentDialogueId() const { return dialogueId; }
         const Camera2D &Camera() const { return camera; }
         float ElapsedSeconds() const { return elapsedSeconds; }
         const Animator &PlayerAnimator() const { return playerAnimator; }
         Facing PlayerFacing() const { return playerFacing; }
 
     protected:
-        void Say(DialogueCue cue);
+        EventManager &Events() { return events; }
+        Player &MutablePlayer() { return player; }
+        DialogueMessageId Say(DialogueCue cue);
 
         virtual void OnReset() {
         }
@@ -84,6 +94,7 @@ namespace rage {
         void UpdateCamera();
 
         void ApplyDialogueSpeed();
+        void PublishDialogueMilestones();
 
         void UpdatePlayerAnimation(float dt);
 
@@ -94,11 +105,15 @@ namespace rage {
         DialogueBox dialogue;
         Camera2D camera = {};
         DialogueCue currentCue;
+        DialogueMessageId dialogueId = 0;
+        bool revealStarted = false;
+        bool revealCompleted = false;
         float dialogueDelay = 0;
         float preferredTextSpeed = 40;
         float elapsedSeconds = 0;
         Animator playerAnimator;
         Facing playerFacing = Facing::Right;
+        EventManager events;
     };
 
     // Level list and factories are implemented in main.cpp, beside the level handler.

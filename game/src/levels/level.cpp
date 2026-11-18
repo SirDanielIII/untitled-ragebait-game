@@ -14,6 +14,7 @@ namespace rage {
     }
 
     void Level::Reset(const GameConfig &config) {
+        events.Reset();
         player.Reset(definition.spawn);
         playerAnimator = {};
         playerAnimator.SetState("idle");
@@ -45,9 +46,11 @@ namespace rage {
         const float revealTime = std::max(0.0f, dt - dialogueDelay);
         dialogueDelay = std::max(0.0f, dialogueDelay - dt);
         dialogue.writer.Update(revealTime);
+        PublishDialogueMilestones();
         player.Update(dt, input, config, definition.platforms, definition.world);
         UpdatePlayerAnimation(dt);
         OnUpdate(dt, input);
+        events.Update();
         UpdateCamera();
     }
 
@@ -56,7 +59,7 @@ namespace rage {
         if (preferredTextSpeed == 0 || currentCue.speedMultiplier == 0) dialogueDelay = 0;
     }
 
-    void Level::Say(DialogueCue cue) {
+    DialogueMessageId Level::Say(DialogueCue cue) {
         currentCue = std::move(cue);
         currentCue.speedMultiplier = std::isfinite(currentCue.speedMultiplier) ? std::clamp(currentCue.speedMultiplier, 0.0f, 10.0f) : 1.0f;
         currentCue.startDelay = std::isfinite(currentCue.startDelay) ? std::max(0.0f, currentCue.startDelay) : 0.0f;
@@ -64,6 +67,24 @@ namespace rage {
         dialogueDelay = currentCue.startDelay;
         ApplyDialogueSpeed();
         dialogue.writer.Replace(currentCue.text);
+        ++dialogueId;
+        revealStarted = false;
+        revealCompleted = false;
+        PublishDialogueMilestones();
+        return dialogueId;
+    }
+
+    void Level::PublishDialogueMilestones() {
+        if (dialogueId == 0 || dialogueDelay > 0 || revealCompleted) return;
+        // Replay resets presentation only. Each Say emits milestones once per message ID.
+        if (!revealStarted) {
+            events.Notify({dialogueEvents::revealStarted, dialogueId});
+            revealStarted = true;
+        }
+        if (dialogue.writer.IsComplete()) {
+            events.Notify({dialogueEvents::revealCompleted, dialogueId});
+            revealCompleted = true;
+        }
     }
 
     void Level::UpdatePlayerAnimation(float dt) {
