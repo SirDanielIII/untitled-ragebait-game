@@ -34,7 +34,11 @@ namespace rage {
         float fontSize = 24.0f;
         bool allowSkip = true;
         bool allowReplay = true;
+        DialogueEffects effects = {};
+        DialogueMessageId id = 0; // Assigned by Say for this request in this level run.
     };
+
+    enum class DialoguePolicy { WhenAvailable, Interrupt };
 
     // Content is data; behavior belongs in the corresponding Level subclass.
     struct LevelDefinition {
@@ -65,7 +69,7 @@ namespace rage {
         const LevelDefinition &Definition() const { return definition; }
         const Player &GetPlayer() const { return player; }
         const Typewriter &Dialogue() const { return dialogue.writer; }
-        DialogueMessageId CurrentDialogueId() const { return dialogueId; }
+        DialogueMessageId CurrentDialogueId() const { return currentCue.id; }
         const Camera2D &Camera() const { return camera; }
         float ElapsedSeconds() const { return elapsedSeconds; }
         const Animator &PlayerAnimator() const { return playerAnimator; }
@@ -74,7 +78,9 @@ namespace rage {
     protected:
         EventManager &Events() { return events; }
         Player &MutablePlayer() { return player; }
-        DialogueMessageId Say(DialogueCue cue);
+        bool CanSay() const;
+        // Returns 0 if busy. Use CanSay in polling event conditions to retry.
+        DialogueMessageId Say(DialogueCue cue, DialoguePolicy policy = DialoguePolicy::WhenAvailable);
 
         virtual void OnReset() {
         }
@@ -93,8 +99,8 @@ namespace rage {
     private:
         void UpdateCamera();
 
-        void ApplyDialogueSpeed();
-        void PublishDialogueMilestones();
+        bool ApplyDialogueSpeed();
+        void PublishDialogueMilestones(DialogueRevealMethod method);
 
         void UpdatePlayerAnimation(float dt);
 
@@ -105,7 +111,7 @@ namespace rage {
         DialogueBox dialogue;
         Camera2D camera = {};
         DialogueCue currentCue;
-        DialogueMessageId dialogueId = 0;
+        bool requestedThisFrame = false;
         bool revealStarted = false;
         bool revealCompleted = false;
         float dialogueDelay = 0;

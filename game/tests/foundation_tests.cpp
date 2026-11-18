@@ -152,6 +152,8 @@ void TestDialogue()
 
 void TestConfig()
 {
+    Check(ConfigStore::DefaultSettingsPath() == std::filesystem::path(GetApplicationDirectory()) / "settings.yaml",
+          "Default settings should be beside the executable");
     TestDirectory directory;
     ConfigStore store;
     Check(store.values.windowWidth == 1600 && store.values.windowHeight == 900, "Default resolution is incorrect");

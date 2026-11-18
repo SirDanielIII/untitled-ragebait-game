@@ -1,8 +1,8 @@
 #include "engine/config/config.h"
+#include "raylib.h"
 
 #include <charconv>
 #include <cmath>
-#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <locale>
@@ -135,12 +135,6 @@ namespace rage {
     }
 
     std::filesystem::path ConfigStore::DefaultSettingsPath() {
-#if defined(_WIN32)
-        if (const char *base = std::getenv("LOCALAPPDATA")) return std::filesystem::path(base) / "UntitledRagebaitGame" / "settings.yaml";
-#else
-        if (const char *base = std::getenv("XDG_DATA_HOME")) return std::filesystem::path(base) / "untitled_ragebait_game" / "settings.yaml";
-        if (const char *base = std::getenv("HOME")) return std::filesystem::path(base) / ".local/share/untitled_ragebait_game/settings.yaml";
-#endif
-        return std::filesystem::temp_directory_path() / "untitled_ragebait_game/settings.yaml";
+        return std::filesystem::path(GetApplicationDirectory()) / "settings.yaml";
     }
 }
