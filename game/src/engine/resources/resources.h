@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/assets/asset_manager.h"
 #include "engine/config/config.h"
 #include "engine/graphics/layout.h"
 #include "raylib.h"
@@ -27,6 +28,9 @@ namespace rage {
 
         bool DrawArt(ArtId id, Rectangle bounds, ArtFit fit = ArtFit::Contain, Color tint = WHITE) const;
 
+        // Sprites and animations described by data/game_data.csv.
+        const AssetManager &Assets() const { return assets; }
+
         RenderTexture2D Canvas() const { return canvas; }
 
         void PlayClick(const GameConfig &config) const;
@@ -43,5 +47,6 @@ namespace rage {
         Font uiFont = {};
         bool ownsFont = false;
         std::array<Texture2D, static_cast<std::size_t>(ArtId::Count)> artwork = {};
+        AssetManager assets;
     };
 }

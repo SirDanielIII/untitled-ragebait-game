@@ -31,6 +31,19 @@ Edit `.world`, `.spawn` and `.platforms` in the stage definition. Coordinates ar
 
 `.backdrop` selects a background image. Collision geometry comes from `.platforms`, independently of the image. Add stage-specific drawing in `DrawWorld(const Resources&) const`; it runs inside the world camera, before platforms and the player are drawn.
 
+For objects with art in the Game Data sheet (hazards, props, effects), override `SubmitSprites` and queue them by ID. Each one is drawn on its sheet layer, at its pivot, with a placeholder box until its PNG exists:
+
+```cpp
+void SubmitSprites(RenderQueue& queue, const Resources& resources) const override
+{
+    const auto& assets = resources.Assets();
+    if (const auto* anvil = assets.Find("anvil_fall"))
+        queue.Submit(assets, *anvil, anvilAnimator.Frame(*anvil), anvilPosition);
+}
+```
+
+Keep an `Animator` member per animated object, call `animator.SetState("fall")` and `animator.Update(dt)` from `OnUpdate`, and reset it in `OnReset`. Sprite size never affects collision; keep hazard rectangles in the level code. See [ART_ASSETS.md](ART_ASSETS.md#game-data-sprites-and-animations).
+
 The current layouts are placeholders. The stairwell needs a blueprint before its climbing sections are designed.
 
 ## Stage logic
