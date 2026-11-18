@@ -44,7 +44,7 @@ void TestLevelScripts()
     const InputFrame replay{.replayDialogue = true};
     scene.Update(0, replay, config);
     Check(scene.Dialogue().VisibleBytes() == 0, "Replay failed to restart text");
-    scene.Say({.text = "Locked message", .allowSkip = false, .allowReplay = false});
+    scene.Say({.text = "Locked message", .allowSkip = false, .allowReplay = false}, DialoguePolicy::Interrupt);
     scene.Update(0, skip, config);
     Check(scene.Dialogue().VisibleBytes() == 0, "Disabled skip was ignored");
     scene.Update(0.25f, {}, config);
@@ -65,6 +65,7 @@ void TestDialogueEvents()
     DialogueMessageId watched = 0;
     int starts = 0;
     int completions = 0;
+    auto expectedMethod = DialogueRevealMethod::Natural;
     scene.Events().RegisterEvent({
         .id = "started",
         .execute = [&] { ++starts; },
@@ -77,13 +78,16 @@ void TestDialogueEvents()
         .id = "completed",
         .execute = [&] { ++completions; },
         .matchesNotification = [&](const EventNotification& notice) {
-            return notice.topic == dialogueEvents::revealCompleted && notice.sourceId == watched;
+            return notice.topic == dialogueEvents::revealCompleted && notice.sourceId == watched
+                && notice.revealMethod == expectedMethod;
         },
         .repeatable = true
     });
 
     scene.Reset(config);
-    watched = scene.Say({.text = "abcd", .startDelay = 0.5f});
+    const auto intro = scene.CurrentDialogueId();
+    Check(scene.Say({.text = "Busy"}) == 0 && scene.CurrentDialogueId() == intro, "Unrelated request replaced intro");
+    watched = scene.Say({.text = "abcd", .startDelay = 0.5f}, DialoguePolicy::Interrupt);
     scene.Update(0.25f, {}, config);
     Check(starts == 0 && completions == 0, "Dialogue started during its delay");
     scene.Update(0.375f, {}, config);
@@ -95,12 +99,92 @@ void TestDialogueEvents()
     Check(starts == 1 && completions == 1 && scene.CurrentDialogueId() == watched, "Replay published new milestones");
 
     watched = scene.Say({.text = "abcd", .startDelay = 1.0f});
-    const auto replacement = scene.Say({.text = "abcd", .startDelay = 1.0f});
+    const auto replacement = scene.Say({.text = "abcd", .startDelay = 1.0f}, DialoguePolicy::Interrupt);
     scene.Update(0, {.completeDialogue = true}, config);
     Check(replacement != watched && starts == 1 && completions == 1, "Identical replacement text published milestones for the wrong message");
+    expectedMethod = DialogueRevealMethod::Instant;
     watched = scene.Say({.text = "abcd", .speedMultiplier = 0, .startDelay = 1.0f});
+    Check(scene.Say({.text = "Too soon"}) == 0, "An instant cue was overwritten within the same frame");
     scene.Update(0, {}, config);
     Check(starts == 2 && completions == 2, "Instant reveal did not publish both milestones");
+
+    expectedMethod = DialogueRevealMethod::Enter;
+    watched = scene.Say({.text = "Read me", .startDelay = 1});
+    scene.Update(0, {.completeDialogue = true}, config);
+    Check(starts == 3 && completions == 3, "Enter during the delay did not publish manual completion");
+
+    watched = scene.Say({.text = "Pending", .speedMultiplier = 0});
+    expectedMethod = DialogueRevealMethod::Instant;
+    scene.Reset(config);
+    scene.Update(0, {}, config);
+    Check(scene.CurrentDialogueId() == intro && starts == 3 && completions == 3,
+          "Reset retained dialogue IDs or undelivered notifications");
+}
+
+void TestDialogueEffects()
+{
+    GameConfig config;
+    config.charactersPerSecond = 4;
+    ScriptedTestLevel scene(Level0Definition());
+    scene.Reset(config);
+    const auto id = scene.Say({.text = "abcd",
+        .effects = {.shakePixels = 3, .shakeHz = 1, .holdSeconds = 1, .fadeSeconds = 2}}, DialoguePolicy::Interrupt);
+    scene.Update(0.25f, {}, config);
+    Check(test::Near(scene.Dialogue().TextOffset().x, 3), "Authored shake amplitude or rate was ignored");
+    scene.Update(1.75f, {}, config);
+    Check(scene.Dialogue().IsComplete() && scene.Dialogue().Opacity() == 1, "Hold did not begin at reveal completion");
+    scene.Update(1, {}, config);
+    Check(test::Near(scene.Dialogue().Opacity(), 0.5f) && scene.Say({.text = "Busy"}) == 0,
+          "The fade was interrupted or did not use the authored duration");
+    scene.Update(1, {}, config);
+    Check(scene.Dialogue().Opacity() == 0, "Text remained visible after fading");
+    scene.Update(0, {.replayDialogue = true}, config);
+    Check(scene.CurrentDialogueId() == id && scene.Dialogue().Opacity() == 1 && scene.Dialogue().VisibleBytes() == 0,
+          "T did not restore the faded cue");
+    scene.Update(4, {}, config);
+    Check(scene.Dialogue().Opacity() == 0 && scene.Say({.text = "Next"}) != 0,
+          "Replayed fade depends on frame partition or never released the dialogue slot");
+}
+
+void TestIdleTrap()
+{
+    GameConfig config;
+    config.charactersPerSecond = 8;
+    Game game(config);
+    game.Update(0, ClickAction(game, ActionKind::StartLevel));
+    const auto& level = *game.ActiveLevel();
+    const auto intro = level.CurrentDialogueId();
+    game.Update(9, {.completeDialogue = true});
+    game.Update(0.1f, {.move = 1});
+    game.Update(9, {});
+    game.Update(0, {.pause = true});
+    game.Update(20, {});
+    game.Update(0, {.pause = true});
+    game.Update(0.75f, {});
+    Check(level.CurrentDialogueId() == intro, "Movement or pause counted towards the idle threshold");
+    game.Update(0.25f, {});
+    const auto taunt = level.CurrentDialogueId();
+    Check(taunt != intro && !level.Dialogue().IsComplete(), "Ten idle seconds did not start the taunt");
+    const float spawn = level.Definition().spawn.x;
+    game.Update(0.1f, {.move = 1});
+    Check(level.GetPlayer().Position().x > spawn && level.CurrentDialogueId() == taunt,
+          "Movement sprung the trap before its taunt was revealed");
+    game.Update(0, {.completeDialogue = true});
+    game.Update(0.1f, {.move = 1});
+    const auto punchline = level.CurrentDialogueId();
+    Check(level.GetPlayer().Position().x == spawn && punchline != taunt, "Revealed taunt did not arm the trap");
+    game.Update(0, {.completeDialogue = true});
+    game.Update(2.75f, {});
+    Check(test::Near(level.Dialogue().Opacity(), 0.5f), "Final quip did not hold and fade");
+    game.Update(0, {.pause = true});
+    game.Update(20, {});
+    game.Update(0, {.pause = true});
+    Check(test::Near(level.Dialogue().Opacity(), 0.5f), "Fade advanced while paused");
+    game.Update(1, {});
+    game.Update(0, {.replayDialogue = true});
+    game.Update(0.1f, {.move = 1, .completeDialogue = true});
+    Check(level.GetPlayer().Position().x > spawn && level.CurrentDialogueId() == punchline && level.Dialogue().Opacity() == 1,
+          "Replaying the faded punchline retriggered the trap or failed to restore the message");
 }
 
 void TestHallwaySequence()
@@ -161,7 +245,9 @@ void TestLevelAuthoring()
 {
     TestLevelScripts();
     TestDialogueEvents();
+    TestDialogueEffects();
+    TestIdleTrap();
     TestHallwaySequence();
-    std::cout << "PASS: level hooks, dialogue milestones and the hallway event sequence\n";
+    std::cout << "PASS: dialogue milestones, effects, idle trap and hallway sequence\n";
 }
 }

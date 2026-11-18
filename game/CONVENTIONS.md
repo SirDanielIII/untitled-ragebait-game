@@ -17,7 +17,7 @@ Number levels consistently across folders, files, IDs, classes, definitions and 
 ## Keep related code together
 
 - `main.cpp` is the level handler. Put level registration, screen transitions and the frame loop there; `game.h` declares its state.
-- A playable level gets its own numbered folder: `levels/level_0/`, `levels/level_1/`, etc. Keep its definition, class, event state and factory in `level_<number>.cpp`; place future level-specific helpers beside it. Shared behavior belongs in `levels/level.*`.
+- A playable level gets its own numbered folder. Keep its layout, update hooks and factory in `level_<number>.cpp`. For levels with scripted events, declare the class and its state in `level_<number>.h` and define its event list in `level_<number>_events.cpp`. Shared behavior belongs in `levels/level.*`.
 - Put source/header pairs together in a feature folder: `player/player.*`, `ui/dialogue/dialogue.*`, `engine/window/game_window.*`.
 - Keep menu layouts in `ui/menus/`; shared menu controls, sliders, dialogue and text each have their own folder under `ui/`. `ui/theme.h` contains shared colors.
 - `player/` owns movement/collision. `engine/` groups `window/`, `config/`, `input/`, `resources/` and `graphics/` support.

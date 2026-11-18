@@ -15,7 +15,7 @@ Paths in this guide are relative to `game/src/` unless shown with a `game/` pref
 | Level 2 | `levels/level_2/level_2.cpp` | Climb to the top-floor classroom |
 | Level 3 | `levels/level_3/level_3.cpp` | Face the Entity outside the lecture hall |
 
-The `LevelDefinition` at the top of each file contains the title, description, intro, backdrop, world bounds, spawn and platforms. All shared types are declared in `levels/level.h`. The class below the definition holds the stage's runtime state. `main.cpp` registers definitions and factories for stage selection.
+The `LevelDefinition` at the top of each file contains the title, description, intro, backdrop, world bounds, spawn and platforms. The level instance owns the stage's runtime state. `main.cpp` registers definitions and factories for stage selection.
 
 ## Loading and switching levels
 
@@ -70,7 +70,8 @@ void OnUpdate(float dt, const InputFrame& input) override
 | `MutablePlayer()` | Call player gameplay methods from the stage |
 | `Dialogue()` | Read the current message and its reveal state |
 | `ElapsedSeconds()` | Read time since the stage was reset |
-| `Say(DialogueCue)` | Replace the current message and return its ID |
+| `CanSay()` | Check whether a dialogue request can start this frame |
+| `Say(DialogueCue)` | Start a message and return its level-local request ID, or zero if busy |
 | `Events()` | Register events, post notifications and query completion |
 | `Definition()` | Read the authored level data |
 
@@ -80,22 +81,27 @@ Keep update logic out of drawing functions. Use the application's existing frame
 
 ## Scripted events
 
-Register events in the level constructor. Use a unique ID, an execution callback, and optionally a condition, a notification matcher, or both. Capture `this` to read and modify the owning level. Register prerequisites before the events that depend on them. The manager rejects duplicate IDs and unregistered dependencies, including self-references and cycles.
+Each level's constructor registers the `Event` objects returned by `CreateEvents()` once per level instance. Add entries in the level's `level_<number>_events.cpp`, placing prerequisites earlier in the list. Callbacks can capture `this` to call `Say()`, access the player and update the level's timers. The tutorial has working examples in [level_0_events.cpp](../game/src/levels/level_0/level_0_events.cpp).
 
 ```cpp
-Events().RegisterEvent({
-    .id = "at-door",
-    .condition = [this] { return GetPlayer().Position().x >= 1100.0f; },
-    .execute = [this] { doorCue = Say({.text = "Try the handle."}); }
-});
-Events().RegisterEvent({
-    .id = "door-cue-revealed",
-    .execute = [this] { handleEnabled = true; },
-    .dependencies = {"at-door"},
-    .matchesNotification = [this](const EventNotification& notice) {
-        return notice.topic == dialogueEvents::revealCompleted && notice.sourceId == doorCue;
-    }
-});
+std::vector<Event> Level0::CreateEvents()
+{
+    return {
+        {
+            .id = "at-door",
+            .condition = [this] { return GetPlayer().Position().x >= 1100.0f && CanSay(); },
+            .execute = [this] { doorCue = Say({.text = "Try the handle."}); }
+        },
+        {
+            .id = "door-cue-revealed",
+            .execute = [this] { handleEnabled = true; },
+            .dependencies = {"at-door"},
+            .matchesNotification = [this](const EventNotification& notice) {
+                return notice.topic == dialogueEvents::revealCompleted && notice.sourceId == doorCue;
+            }
+        }
+    };
+}
 ```
 
 In this example `doorCue` and `handleEnabled` are level members. See Level 0 for a complete sequence. `Events().IsCompleted(id)` becomes true after an event's callback returns and stays true until the level resets. Add `.repeatable = true` to run again when a condition goes false and then true, or when another matching notification arrives in a later update.
@@ -114,21 +120,24 @@ Edit `.intro` to set the opening message and typewriter options:
     .startDelay = 0.4f,
     .fontSize = 24.0f,
     .allowSkip = true,
-    .allowReplay = true
+    .allowReplay = true,
+    .effects = {.shakePixels = 2, .shakeHz = 9, .holdSeconds = 3, .fadeSeconds = 1}
 },
 ```
 
 `speedMultiplier` multiplies the text-speed setting: 1 is normal speed, 0.5 is half speed and 2 is double speed. Zero reveals the message immediately and skips the initial delay, as does the player's Instant setting. `Say` clamps multipliers to 0-10, text sizes to 12-48 logical pixels, and negative delays to zero.
 
-Enter reveals the whole message. T replays it, including the initial delay. The cue's flags enable or disable those controls. Changing the text-speed setting takes effect on the current message.
+Enter reveals the whole message. T replays the last accepted message, even after it fades, and restarts its delay and effects. The cue's flags enable or disable those controls. Changing the text-speed setting takes effect on the current message.
 
-Call `Say` from stage logic to start another message:
+`shakePixels` sets the maximum text displacement in logical pixels (0–8) and `shakeHz` sets the shake rate (0–30). Zero displacement or frequency disables shake. A positive `fadeSeconds` holds the completed text for `holdSeconds`, then fades the panel and text over the specified duration. The default keeps the message visible. These timers use unpaused gameplay time.
+
+Use `CanSay()` in an event condition so it stays eligible until the current cue finishes revealing and any hold/fade has played. Only one ordinary request can start per update. To interrupt a cue intentionally, pass `DialoguePolicy::Interrupt`.
 
 ```cpp
-Say({.text = "The stairs do that sometimes.", .speedMultiplier = 1.5f});
+Say({.text = "The stairs do that sometimes.", .speedMultiplier = 1.5f}, DialoguePolicy::Interrupt);
 ```
 
-Each `Say` gets a new message ID, even when the text is identical. `CurrentDialogueId()` also exposes the opening cue's ID. The level posts `dialogueEvents::revealStarted` when the start delay expires and `dialogueEvents::revealCompleted` when the full message becomes visible, including skips and instant reveals. Match both the topic and the message ID. Replay keeps the same ID and never emits either milestone twice for that message.
+Each accepted request gets a new `DialogueCue::id`, even for identical text. IDs restart with the introduction on level reset. Query `CurrentDialogueId()` and `Dialogue().IsComplete()` to inspect the current presentation. The level posts `dialogueEvents::revealStarted` when the start delay expires and `dialogueEvents::revealCompleted` when the entire message becomes visible. Match both the topic and `sourceId`. A completion notification carries a `revealMethod` of `Natural`, `Enter`, or `Instant`. Replay keeps the ID and publishes each milestone at most once across all presentations of that request.
 
 ## Design notes
 
@@ -143,7 +152,7 @@ These hazards, lives, checkpoints, death, stage completion, climbing controls an
 
 ## Adding a stage
 
-1. Create the next numbered folder, for example `game/src/levels/level_4/`. Copy an existing level to `level_4.cpp` and use `Level4`, `Level4Definition`, `MakeLevel4` and `LevelId::Level4` throughout.
+1. Copy a numbered level folder, for example `game/src/levels/level_1/` to `level_4/`. Rename its header, implementation and events file for the new level. Update the includes and use `Level4`, `Level4Definition`, `MakeLevel4` and `LevelId::Level4` throughout.
 2. Add an explicit `LevelId` value in `levels/level.h`; preserve the existing numeric values used by saved settings.
 3. Declare `Level4Definition` and `MakeLevel4` in `levels/level.h`, then add `{Level4Definition, MakeLevel4}` to `registrations` in `main.cpp`. This list drives both loading and the level selector.
 4. Extend the `session.last_level` range in `engine/config/config.cpp`.

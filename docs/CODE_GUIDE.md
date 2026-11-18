@@ -2,7 +2,7 @@
 
 Start with [`game/src/main.cpp`](../game/src/main.cpp). It lists the levels, chooses the current screen, dispatches updates/drawing, and runs the frame loop.
 
-The current game supports menus, settings, level selection, movement/collision, pause/restart and dialogue. All four levels have placeholder layouts; stage-specific events, hazards and completion/progression are still pending. See [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md) for those planned mechanics.
+The current game supports menus, settings, level selection, movement/collision, pause/restart and dialogue. All four levels have placeholder layouts. Level 0 includes a scripted idle trap and hallway dialogue. See [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md) for stage mechanics.
 
 ## Where to make a change
 
@@ -11,6 +11,7 @@ The current game supports menus, settings, level selection, movement/collision, 
 | Start, switch, pause, resume or restart a level | `game/src/main.cpp` (`Game::Apply`, `Game::Update`) |
 | Register a new level | `registrations` near the top of `main.cpp` |
 | Change a numbered level (0-3) | `game/src/levels/level_<number>/level_<number>.cpp` |
+| Edit a level's scripted events | `game/src/levels/level_<number>/level_<number>_events.cpp` |
 | Change shared level behavior or camera follow | `game/src/levels/level.cpp` |
 | Change movement or collisions | `game/src/player/player.cpp` |
 | Change menu layouts, labels or buttons | `game/src/ui/menus/menus.cpp` |
@@ -88,9 +89,9 @@ CMake stages `game/resources/` on every build of the game target, including asse
 
 Each frame captures input, limits `dt` to 0-0.1 seconds, updates the current screen, applies audio/FPS changes, saves pending settings and draws.
 
-Scene updates run dialogue, player movement, the stage's `OnUpdate`, then camera follow. Pause and Settings suspend this sequence. R/Restart resets the player, opening dialogue and elapsed time, then calls `OnReset`. Desktop focus loss pauses play.
+Scene updates run dialogue, player movement, the stage's `OnUpdate`, scripted events, then camera follow. Pause and Settings suspend this sequence. R/Restart resets the player, opening dialogue and elapsed time, then calls `OnReset`. Desktop focus loss pauses play.
 
-Stage-specific events belong in `OnReset` and `OnUpdate`. See [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md).
+Define scripted events in the stage's events file. Use `OnReset` to restore stage state and `OnUpdate` to track values the events need, such as time spent standing still. See [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md).
 
 ## Rendering
 
@@ -133,9 +134,7 @@ Load order is `GameConfig` defaults, packaged `config.yaml` (or `--config`), the
 
 The FPS cap ranges from 30 to 360. `window.unlimited_fps` bypasses the saved cap using `SetTargetFPS(0)`. Volume, mute, text speed and FPS visibility apply immediately. Writes wait until mouse release; pending changes also save on exit.
 
-Windows settings are in `%LOCALAPPDATA%/UntitledRagebaitGame/settings.yaml`. Other desktops use `XDG_DATA_HOME` or `~/.local/share/untitled_ragebait_game/`. The file stores preferences and the last selected stage, not gameplay progress.
-
-If the required environment variables are unavailable, settings fall back to `untitled_ragebait_game/settings.yaml` under the system temporary directory. Startup still opens the main menu; saving the last selected stage does not automatically resume it.
+Desktop builds read and save `settings.yaml` beside the game executable. The file stores preferences and the last selected stage. To carry settings into another build, move this file beside that build's executable. The game opens the main menu on startup.
 
 ## Build and tests
 

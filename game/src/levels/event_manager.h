@@ -7,9 +7,12 @@
 #include <vector>
 
 namespace rage {
+    enum class DialogueRevealMethod { None, Natural, Enter, Instant };
+
     struct EventNotification {
         std::string topic;
         std::uint64_t sourceId = 0; // Optional identifier for a particular object or message.
+        DialogueRevealMethod revealMethod = DialogueRevealMethod::None;
     };
 
     struct Event {

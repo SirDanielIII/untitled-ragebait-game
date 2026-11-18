@@ -1,7 +1,8 @@
-#include "levels/level.h"
+#include "levels/level_0/level_0.h"
+
+#include <utility>
 
 namespace rage {
-    // Edit this file for this stage: layout, narration, events and custom behavior.
     const LevelDefinition &Level0Definition() {
         static const LevelDefinition definition{
             .id = LevelId::Level0,
@@ -31,40 +32,26 @@ namespace rage {
         return definition;
     }
 
-    namespace {
-        class Level0 final : public Level {
-        public:
-            Level0() : Level(Level0Definition()) {
-                Events().RegisterEvent({
-                    .id = "hallway-cue",
-                    .condition = [this] { return GetPlayer().Position().x >= 350.0f && Dialogue().IsComplete(); },
-                    .execute = [this] { hallwayCue = Say({.text = "Wait here a moment. Let your eyes adjust."}); }
-                });
-                Events().RegisterEvent({
-                    .id = "hallway-cue-revealed",
-                    .execute = [this] { followUpTime = ElapsedSeconds() + 2.0f; },
-                    .dependencies = {"hallway-cue"},
-                    .matchesNotification = [this](const EventNotification &notice) {
-                        return notice.topic == dialogueEvents::revealCompleted && notice.sourceId == hallwayCue;
-                    }
-                });
-                Events().RegisterEvent({
-                    .id = "hallway-follow-up",
-                    .condition = [this] { return ElapsedSeconds() >= followUpTime && Dialogue().IsComplete(); },
-                    .execute = [this] { Say({.text = "That should do it. The front door is still ahead."}); },
-                    .dependencies = {"hallway-cue-revealed"}
-                });
-            }
+    Level0::Level0() : Level(Level0Definition()) {
+        for (auto &event : CreateEvents()) {
+            Events().RegisterEvent(std::move(event));
+        }
+    }
 
-        private:
-            void OnReset() override {
-                hallwayCue = 0;
-                followUpTime = 0.0f;
-            }
+    void Level0::OnReset() {
+        idleCue = 0;
+        stillSeconds = 0;
+        previousPosition = GetPlayer().Position();
+        movedThisFrame = false;
+        hallwayCue = 0;
+        followUpTime = 0.0f;
+    }
 
-            DialogueMessageId hallwayCue = 0;
-            float followUpTime = 0.0f;
-        };
+    void Level0::OnUpdate(float dt, const InputFrame &) {
+        const auto position = GetPlayer().Position();
+        movedThisFrame = position.x != previousPosition.x || position.y != previousPosition.y;
+        stillSeconds = movedThisFrame ? 0 : stillSeconds + dt;
+        previousPosition = position;
     }
 
     std::unique_ptr<Level> MakeLevel0() { return std::make_unique<Level0>(); }

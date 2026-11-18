@@ -21,6 +21,7 @@ namespace rage {
         playerFacing = Facing::Right;
         elapsedSeconds = 0;
         preferredTextSpeed = config.charactersPerSecond;
+        currentCue.id = 0;
         Say(definition.intro);
         OnReset();
         UpdateCamera();
@@ -33,20 +34,23 @@ namespace rage {
         }
         if (!std::isfinite(dt) || dt < 0) return;
         elapsedSeconds += dt;
+        requestedThisFrame = false;
         preferredTextSpeed = config.charactersPerSecond;
-        ApplyDialogueSpeed();
+        const bool instant = ApplyDialogueSpeed();
+        auto revealMethod = instant ? DialogueRevealMethod::Instant : DialogueRevealMethod::Natural;
         if (input.replayDialogue && currentCue.allowReplay) {
             dialogue.writer.Reset();
-            dialogueDelay = preferredTextSpeed == 0 || currentCue.speedMultiplier == 0 ? 0 : currentCue.startDelay;
+            dialogueDelay = instant ? 0 : currentCue.startDelay;
         }
         if (input.completeDialogue && currentCue.allowSkip) {
+            if (!dialogue.writer.IsComplete()) revealMethod = DialogueRevealMethod::Enter;
             dialogue.writer.Complete();
             dialogueDelay = 0;
         }
         const float revealTime = std::max(0.0f, dt - dialogueDelay);
         dialogueDelay = std::max(0.0f, dialogueDelay - dt);
         dialogue.writer.Update(revealTime);
-        PublishDialogueMilestones();
+        PublishDialogueMilestones(revealMethod);
         player.Update(dt, input, config, definition.platforms, definition.world);
         UpdatePlayerAnimation(dt);
         OnUpdate(dt, input);
@@ -54,35 +58,45 @@ namespace rage {
         UpdateCamera();
     }
 
-    void Level::ApplyDialogueSpeed() {
+    bool Level::ApplyDialogueSpeed() {
         dialogue.writer.SetSpeed(preferredTextSpeed * currentCue.speedMultiplier);
-        if (preferredTextSpeed == 0 || currentCue.speedMultiplier == 0) dialogueDelay = 0;
+        const bool instant = preferredTextSpeed == 0 || currentCue.speedMultiplier == 0;
+        if (instant) dialogueDelay = 0;
+        return instant;
     }
 
-    DialogueMessageId Level::Say(DialogueCue cue) {
+    bool Level::CanSay() const {
+        return currentCue.id == 0 || (!requestedThisFrame && revealCompleted && dialogue.writer.IsComplete()
+            && (!dialogue.writer.FadesOut() || dialogue.writer.Opacity() == 0));
+    }
+
+    DialogueMessageId Level::Say(DialogueCue cue, DialoguePolicy policy) {
+        if (policy == DialoguePolicy::WhenAvailable && !CanSay()) return 0;
+        cue.id = currentCue.id + 1;
         currentCue = std::move(cue);
+        requestedThisFrame = true;
         currentCue.speedMultiplier = std::isfinite(currentCue.speedMultiplier) ? std::clamp(currentCue.speedMultiplier, 0.0f, 10.0f) : 1.0f;
         currentCue.startDelay = std::isfinite(currentCue.startDelay) ? std::max(0.0f, currentCue.startDelay) : 0.0f;
         currentCue.fontSize = std::isfinite(currentCue.fontSize) ? std::clamp(currentCue.fontSize, 12.0f, 48.0f) : 24.0f;
         dialogueDelay = currentCue.startDelay;
-        ApplyDialogueSpeed();
+        const bool instant = ApplyDialogueSpeed();
+        dialogue.writer.SetEffects(currentCue.effects);
         dialogue.writer.Replace(currentCue.text);
-        ++dialogueId;
         revealStarted = false;
         revealCompleted = false;
-        PublishDialogueMilestones();
-        return dialogueId;
+        PublishDialogueMilestones(instant ? DialogueRevealMethod::Instant : DialogueRevealMethod::Natural);
+        return currentCue.id;
     }
 
-    void Level::PublishDialogueMilestones() {
-        if (dialogueId == 0 || dialogueDelay > 0 || revealCompleted) return;
+    void Level::PublishDialogueMilestones(DialogueRevealMethod method) {
+        if (currentCue.id == 0 || dialogueDelay > 0 || revealCompleted) return;
         // Replay resets presentation only. Each Say emits milestones once per message ID.
         if (!revealStarted) {
-            events.Notify({dialogueEvents::revealStarted, dialogueId});
+            events.Notify({dialogueEvents::revealStarted, currentCue.id});
             revealStarted = true;
         }
         if (dialogue.writer.IsComplete()) {
-            events.Notify({dialogueEvents::revealCompleted, dialogueId});
+            events.Notify({dialogueEvents::revealCompleted, currentCue.id, method});
             revealCompleted = true;
         }
     }

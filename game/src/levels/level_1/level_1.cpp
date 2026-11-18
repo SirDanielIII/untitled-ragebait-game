@@ -1,7 +1,8 @@
-#include "levels/level.h"
+#include "levels/level_1/level_1.h"
+
+#include <utility>
 
 namespace rage {
-    // Edit this file for this stage: layout, narration, events and custom behavior.
     const LevelDefinition &Level1Definition() {
         static const LevelDefinition definition{
             .id = LevelId::Level1,
@@ -32,23 +33,10 @@ namespace rage {
         return definition;
     }
 
-    namespace {
-        class Level1 final : public Level {
-        public:
-            Level1() : Level(Level1Definition()) {
-            }
-
-        private:
-            void OnReset() override {
-                // TODO: Reset this level's event flags, timers and hazards here.
-            }
-
-            void OnUpdate(float dt, const InputFrame &input) override {
-                // Update active hazards here; register scripted triggers with Events() in the constructor.
-                (void) dt;
-                (void) input;
-            }
-        };
+    Level1::Level1() : Level(Level1Definition()) {
+        for (auto &event : CreateEvents()) {
+            Events().RegisterEvent(std::move(event));
+        }
     }
 
     std::unique_ptr<Level> MakeLevel1() { return std::make_unique<Level1>(); }

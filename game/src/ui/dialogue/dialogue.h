@@ -9,6 +9,13 @@
 #include <functional>
 
 namespace rage {
+    struct DialogueEffects {
+        float shakePixels = 0;
+        float shakeHz = 12;
+        float holdSeconds = 0;
+        float fadeSeconds = 0; // Zero keeps the message visible until replaced.
+    };
+
     // Owns one complete message, including all lines. Rendering never changes reveal state.
     class Typewriter {
     public:
@@ -21,6 +28,10 @@ namespace rage {
         void Update(float dt);
 
         void SetSpeed(float charactersPerSecond);
+        void SetEffects(DialogueEffects settings);
+        bool FadesOut() const { return effects.fadeSeconds > 0; }
+        float Opacity() const;
+        Vector2 TextOffset() const;
 
         bool IsComplete() const { return revealed == boundaries.size(); }
         const std::string &Text() const { return text; }
@@ -33,6 +44,9 @@ namespace rage {
         std::size_t revealed = 0;
         double fraction = 0.0;
         float speed = 40.0f;
+        DialogueEffects effects;
+        double age = 0;
+        double timeFullyVisible = 0;
     };
 
     // Returns a UTF-8 codepoint boundary (ASCII is the common case for this scaffold).
