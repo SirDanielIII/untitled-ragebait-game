@@ -13,6 +13,7 @@ Group project for CISC 320 Group 7 (2026 Fall).
 5. Ethan See-To (Interface Specialist)
 6. Noah Segal (Programmer)
 7. Reya Patel (Programmer)
+8. Kenny Devine (Art Designer)
 
 ## Start developing here
 
