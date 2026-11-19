@@ -168,8 +168,18 @@ void TestPlayerAnimationState()
     Check(level->PlayerAnimator().State() == "idle" && level->PlayerFacing() == Facing::Right, "Player animation did not reset");
     level->Update(0.1f, {.move = -1}, config);
     Check(level->PlayerAnimator().State() == "walk" && level->PlayerFacing() == Facing::Left, "Walking left did not select walk/left");
+    // Releasing movement should preserve facing while slowing down.
     level->Update(0.1f, {}, config);
-    Check(level->PlayerAnimator().State() == "idle" && level->PlayerFacing() == Facing::Left, "Stopping should idle and keep facing");
+    Check(level->PlayerFacing() == Facing::Left,
+        "Releasing movement changed player facing");
+
+    // Allow friction to bring the player to a complete stop.
+    for (int i = 0; i < 4; ++i) {
+        level->Update(0.1f, {}, config);
+    }
+    Check(level->PlayerAnimator().State() == "idle" &&
+        level->PlayerFacing() == Facing::Left,
+        "Stopping should idle and keep facing");
     level->Update(0.05f, {.jump = true}, config);
     Check(level->PlayerAnimator().State() == "jump", "Jumping did not select the jump state");
 }

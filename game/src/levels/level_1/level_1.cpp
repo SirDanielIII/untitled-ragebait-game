@@ -49,6 +49,20 @@ namespace rage {
             return phase >= 0.65f && phase < 1.15f;
         }
 
+        // The merged engine owns solid collision through ObjectManager.
+        // Local helper keeps each authored ledge a concise GameObjectDefinition.
+        GameObjectDefinition SolidPlatform(const char* id, Rectangle bounds,
+                                           const char* assetId = "platform") {
+            return {
+                .id = id,
+                .type = ObjectType::Static,
+                .collision = CollisionType::Solid,
+                .position = {bounds.x, bounds.y},
+                .size = {bounds.width, bounds.height},
+                .assetId = assetId
+            };
+        }
+
         void DrawCar(Rectangle r, Color paint) {
             DrawRectangleRec(r, paint);
             DrawRectangleRec({r.x + 22.0f, r.y + 6.0f, r.width - 44.0f, 16.0f}, {52, 79, 109, 255});
@@ -80,23 +94,29 @@ namespace rage {
             .backdrop = ArtId::Level1,
             .world = {0.0f, 0.0f, 5200.0f, 1600.0f},
             .spawn = {100.0f, 1436.0f},
-            .platforms = {
-                {0, floorY, 2140, 120},          // Sidewalk + road
-                {1850, 1378, 150, 22},          // Car-pileup climb
-                {1980, 1300, 145, 22},
-                {2110, 1222, 140, 22},
-                {2240, 1144, 140, 22},          // Telephone-pole climb
-                {2370, 1066, 140, 22},
-                {2500, 988, 140, 22},
-                {2630, 910, 150, 22},
-                {2770, 828, 155, 22},          // Safe sky checkpoint
-                wires[0], wires[1], wires[2],  // Timed electric wires
-                {3765, 700, 170, 22},          // Cloud parkour
-                {3970, 715, 170, 22},
-                {4170, 665, 180, 22},
-                {4400, 755, 170, 22},
-                {4605, 785, 160, 22},          // Rainbow entrance
-                {4875, floorY, 325, 120}       // Campus sidewalk
+            // The merged GameObject system replaces LevelDefinition::platforms.
+            // Collision remains identical to the authored route in Level 1 v1.0.
+            .objects = {
+                SolidPlatform("sidewalk-road", {0, floorY, 2140, 120}),
+                SolidPlatform("pileup-step-1", {1850, 1378, 150, 22}),
+                SolidPlatform("pileup-step-2", {1980, 1300, 145, 22}),
+                SolidPlatform("pileup-step-3", {2110, 1222, 140, 22}),
+                SolidPlatform("telephone-step-1", {2240, 1144, 140, 22}),
+                SolidPlatform("telephone-step-2", {2370, 1066, 140, 22}),
+                SolidPlatform("telephone-step-3", {2500, 988, 140, 22}),
+                SolidPlatform("telephone-step-4", {2630, 910, 150, 22}),
+                SolidPlatform("sky-checkpoint-ledge", {2770, 828, 155, 22}),
+                // The wires and clouds are drawn manually in DrawWorld;
+                // empty Asset IDs prevent platform placeholders covering them.
+                SolidPlatform("wire-1", wires[0], ""),
+                SolidPlatform("wire-2", wires[1], ""),
+                SolidPlatform("wire-3", wires[2], ""),
+                SolidPlatform("cloud-1", {3765, 700, 170, 22}, ""),
+                SolidPlatform("cloud-2", {3970, 715, 170, 22}, ""),
+                SolidPlatform("cloud-3", {4170, 665, 180, 22}, ""),
+                SolidPlatform("cloud-4", {4400, 755, 170, 22}, ""),
+                SolidPlatform("rainbow-entrance", {4605, 785, 160, 22}, ""),
+                SolidPlatform("campus-sidewalk", {4875, floorY, 325, 120})
             }
         };
         return definition;
@@ -342,9 +362,10 @@ namespace rage {
             }
         }
 
-        // Clouds (platform collisions are supplied separately by the base level).
+        // Clouds use GameObject definitions for collision; DrawWorld supplies the art.
         for (int i = 12; i < 17; ++i) {
-            const auto& p = Definition().platforms[static_cast<std::size_t>(i)];
+            const auto& cloud = Definition().objects[static_cast<std::size_t>(i)];
+            const Rectangle p{cloud.position.x, cloud.position.y, cloud.size.x, cloud.size.y};
             DrawEllipse(static_cast<int>(p.x + p.width * 0.30f), static_cast<int>(p.y),
                         p.width * 0.38f, 26.0f, {205, 222, 239, 255});
             DrawEllipse(static_cast<int>(p.x + p.width * 0.65f), static_cast<int>(p.y - 8),

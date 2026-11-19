@@ -11,6 +11,7 @@ void TestLevelAuthoring();
 void TestEventManager();
 void TestGameData();
 void TestAssetRendering();
+void TestObjects();
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
 void TestWindowResize(void* handle);
 #endif
@@ -188,6 +189,30 @@ void TestConfig()
     std::cout << "PASS: defaults, valid/malformed YAML subset, range checks and preferences round trip\n";
 }
 
+    void TestPlayerHealth()
+{
+    GameConfig config;
+    const Rectangle world = {0, 0, 2000, 700};
+    const std::vector<Rectangle> platforms = {{0, 650, 2000, 50}};
+    InputFrame right;
+    right.move = 1;
+    Player player;
+    player.Reset({100, 606});
+    Check(player.GetHealth() == player.GetMaxHealth() && !player.IsDead(), "Player did not start at full health");
+    player.TakeDamage(1);
+    Check(player.GetHealth() == 0 && player.IsDead(), "TakeDamage did not reduce health");
+    player.TakeDamage(5);
+    Check(player.GetHealth() == 0, "Health dropped below zero");
+    const float deadX = player.Position().x;
+    for (int i = 0; i < 30; ++i) player.Update(1.0f / 60, right, config, platforms, world);
+    Check(Near(player.Position().x, deadX), "Dead player moved");
+    player.Reset({100, 606});
+    Check(!player.IsDead() && player.GetHealth() == player.GetMaxHealth(), "Reset did not restore health");
+    player.Kill();
+    Check(player.IsDead(), "Kill did not set the dead state");
+    std::cout << "PASS: health, damage, death and reset\n";
+}
+
 void TestMovement()
 {
     GameConfig config;
@@ -200,7 +225,7 @@ void TestMovement()
     player.Update(1.0f / 60, {}, config, platforms, world);
     Check(player.Grounded(), "Initial floor contact failed");
     for (int i = 0; i < 60; ++i) player.Update(1.0f / 60, right, config, platforms, world);
-    Check(Near(player.Position().x, 360, 0.15f), "Movement is not in pixels per second");
+    Check(Near(player.Position().x, 338.6f, 0.5f), "Movement does not accelerate toward moveSpeed");
     Player slowFrames;
     slowFrames.Reset({100, 606});
     for (int i = 0; i < 30; ++i) slowFrames.Update(1.0f / 30, right, config, platforms, world);
@@ -212,12 +237,13 @@ void TestMovement()
     for (int i = 0; i < 120; ++i) player.Update(1.0f / 60, {}, config, platforms, world);
     Check(player.Grounded() && Near(player.Position().y, 606) && player.Velocity().y == 0, "Landing did not settle the player");
     player.Reset({1955, 606});
-    player.Update(0.1f, right, config, platforms, world);
+    for (int i = 0; i < 60; ++i) player.Update(1.0f / 60, right, config, platforms, world);
     Check(Near(player.Position().x, 1970), "World boundary clamp failed");
     player.Reset({100, 606});
     const std::vector<Rectangle> wall = {{0, 650, 2000, 50}, {150, 550, 30, 100}};
-    player.Update(0.1f, right, config, wall, world);
+    for (int i = 0; i < 60; ++i) player.Update(1.0f / 60, right, config, wall, world);
     Check(Near(player.Position().x, 120), "Side collision failed");
+    Check(player.Velocity().x == 0, "Wall contact did not stop horizontal speed");
     player.Reset({100, 606});
     Check(player.Velocity().x == 0 && player.Velocity().y == 0 && !player.Grounded(), "Player reset retained motion");
     for (const float irregularDt : {1.0f / 60 + 0.00001f, 0.017f, 0.00834f, 0.01668f})
@@ -312,11 +338,13 @@ int RunSelfTests()
         TestDialogue();
         TestConfig();
         TestMovement();
+        TestPlayerHealth();
         TestSliders();
         TestSession();
         TestLevelAuthoring();
         TestEventManager();
         TestGameData();
+        TestObjects();
         std::cout << "All foundation self-tests passed (no window/audio context required).\n";
         return 0;
     }
