@@ -54,7 +54,11 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
     const bool wasClimbing = climbing;
     climbing = false;
 
+<<<<<<< HEAD
     if (input.climb && stamina > 0.0f) {
+=======
+    if (input.climb) {
+>>>>>>> 97544b04d226c69ea96d33c2d9629d0db25ad829
         const Rectangle body = Bounds();
         constexpr float CONTACT_DISTANCE = 2.0f;
 
@@ -95,7 +99,11 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
         : std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
 
     // Space still works for jumping. W/UP can initiate climbing instead.
+<<<<<<< HEAD
     if (input.jump && grounded && !climbing && stamina > 0.0f) {
+=======
+    if (input.jump && grounded && !climbing) {
+>>>>>>> 97544b04d226c69ea96d33c2d9629d0db25ad829
         velocity.y = -config.jumpSpeed;
         grounded = false;
     }
@@ -187,6 +195,8 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
             climbing = false;
             velocity.y = 0.0f;
         }
+}
+
 }
 
 }
