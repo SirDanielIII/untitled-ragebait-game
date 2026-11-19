@@ -16,6 +16,7 @@ namespace rage {
         bool increase = false;
         bool minimum = false;
         bool maximum = false;
+        bool climb = false;
         bool completeDialogue = false;
         bool replayDialogue = false;
         bool resetPlayer = false;
@@ -35,6 +36,7 @@ namespace rage {
         input.back = IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE);
         input.confirm = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER);
         input.up = IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W);
+        input.climb = IsKeyDown(KEY_W) || IsKeyDown(KEY_UP);
         input.down = IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S) || IsKeyPressed(KEY_TAB);
         input.decrease = IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A);
         input.increase = IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D);

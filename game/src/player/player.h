@@ -22,5 +22,6 @@ namespace rage {
         Vector2 position = {};
         Vector2 velocity = {};
         bool grounded = false;
+        bool climbing = false;
     };
 }

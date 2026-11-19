@@ -19,6 +19,7 @@ namespace rage {
         float moveSpeed = 260.0f;
         float jumpSpeed = 620.0f;
         float gravity = 1500.0f;
+        float climbSpeed = 180.0f;
         float charactersPerSecond = 40.0f;
         int lastLevel = 0;
         int EffectiveTargetFps() const { return unlimitedFps ? 0 : targetFps; }
