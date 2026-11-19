@@ -22,6 +22,7 @@ namespace rage {
         velocity = {};
         grounded = false;
         health = maxHealth;
+        moveInput = 0.0f;
     }
 
     void Player::TakeDamage(int amount) {
@@ -33,10 +34,19 @@ namespace rage {
         health = 0;
     }
 
+    PlayerState Player::State() const {
+        if (IsDead()) return PlayerState::Dead;
+        if (!grounded) return PlayerState::Airborne;
+        if (std::abs(velocity.x) < 0.01f) return PlayerState::Idle;
+        // Pushing the same way you're moving is walking; coasting or braking is sliding.
+        return moveInput * velocity.x > 0.0f ? PlayerState::Walking : PlayerState::Sliding;
+    }
+
     void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
                         std::span<const Rectangle> platforms, Rectangle world) {
         if (!std::isfinite(dt) || dt <= 0.0f) return;
         if (IsDead()) return;
+        moveInput = std::clamp(input.move, -1.0f, 1.0f);
         auto settleOnSupport = [&]() {
             if (velocity.y < 0.0f) return false;
             const Rectangle body = Bounds();
@@ -62,7 +72,6 @@ namespace rage {
         // One horizontal axis: opposite keys cancel; diagonal normalization is unnecessary.
         const float targetSpeed = std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
         const float rate = input.move != 0.0f ? groundAcceleration : groundFriction;
-        velocity.x = MoveToward(velocity.x, targetSpeed, rate * std::min(dt, 0.1f));
         if (input.jump && grounded) {
             velocity.y = -config.jumpSpeed;
             grounded = false;
@@ -72,6 +81,7 @@ namespace rage {
         while (remaining > 0.0f) {
             const float step = std::min(remaining, 1.0f / 120.0f);
             remaining -= step;
+            velocity.x = MoveToward(velocity.x, targetSpeed, rate * step);
             position.x += velocity.x * step;
             for (const auto platform: platforms) {
                 if (!Overlaps(Bounds(), platform)) continue;

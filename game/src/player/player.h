@@ -6,6 +6,7 @@
 #include <span>
 
 namespace rage {
+    enum class PlayerState { Idle, Walking, Sliding, Airborne, Dead };
     class Player {
     public:
         void Reset(Vector2 spawn);
@@ -22,6 +23,7 @@ namespace rage {
         int GetHealth() const { return health; }
         int GetMaxHealth() const { return maxHealth; }
         bool IsDead() const { return health <= 0; }
+        PlayerState State() const;
 
     private:
         Vector2 position = {};
@@ -29,5 +31,6 @@ namespace rage {
         bool grounded = false;
         int maxHealth = 1;
         int health = 1;
+        float moveInput = 0.0f;
     };
 }
