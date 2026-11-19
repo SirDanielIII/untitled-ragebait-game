@@ -17,10 +17,17 @@ namespace rage {
         Vector2 Position() const { return position; }
         Vector2 Velocity() const { return velocity; }
         bool Grounded() const { return grounded; }
+        void TakeDamage(int amount);
+        void Kill();
+        int GetHealth() const { return health; }
+        int GetMaxHealth() const { return maxHealth; }
+        bool IsDead() const { return health <= 0; }
 
     private:
         Vector2 position = {};
         Vector2 velocity = {};
         bool grounded = false;
+        int maxHealth = 1;
+        int health = 1;
     };
 }

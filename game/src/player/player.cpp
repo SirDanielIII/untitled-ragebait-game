@@ -14,11 +14,22 @@ namespace rage {
         position = spawn;
         velocity = {};
         grounded = false;
+        health = maxHealth;
+    }
+
+    void Player::TakeDamage(int amount) {
+        if (IsDead() || amount <= 0) return;
+        health = std::max(0, health - amount);
+    }
+
+    void Player::Kill() {
+        health = 0;
     }
 
     void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
                         std::span<const Rectangle> platforms, Rectangle world) {
         if (!std::isfinite(dt) || dt <= 0.0f) return;
+        if (IsDead()) return;
         auto settleOnSupport = [&]() {
             if (velocity.y < 0.0f) return false;
             const Rectangle body = Bounds();
