@@ -14,6 +14,7 @@ namespace rage {
         position = spawn;
         velocity = {};
         grounded = false;
+        stamina = 100.0f;
     }
 
 
@@ -53,7 +54,7 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
     const bool wasClimbing = climbing;
     climbing = false;
 
-    if (input.climb) {
+    if (input.climb && stamina > 0.0f) {
         const Rectangle body = Bounds();
         constexpr float CONTACT_DISTANCE = 2.0f;
 
@@ -94,7 +95,7 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
         : std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
 
     // Space still works for jumping. W/UP can initiate climbing instead.
-    if (input.jump && grounded && !climbing) {
+    if (input.jump && grounded && !climbing && stamina > 0.0f) {
         velocity.y = -config.jumpSpeed;
         grounded = false;
     }
@@ -169,6 +170,23 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
             grounded = settleOnSupport();
         }
     }
+
+        if (grounded) {
+            stamina += config.staminaRegen * dt;
+        }
+        else if (climbing) {
+            stamina -= config.climbStaminaDrain * dt;
+        }
+        else {
+            stamina -= config.jumpStaminaDrain * dt;
+        }
+
+        stamina = std::clamp(stamina, 0.0f, config.maxStamina);
+
+        if (stamina <= 0.0f) {
+            climbing = false;
+            velocity.y = 0.0f;
+        }
 }
 
 }

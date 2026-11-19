@@ -21,6 +21,10 @@ namespace rage {
         float gravity = 1500.0f;
         float climbSpeed = 180.0f;
         float charactersPerSecond = 40.0f;
+        float maxStamina = 100.0f;
+        float climbStaminaDrain = 30.0f;
+        float jumpStaminaDrain = 20.0f;
+        float staminaRegen = 40.0f;
         int lastLevel = 0;
         int EffectiveTargetFps() const { return unlimitedFps ? 0 : targetFps; }
     };

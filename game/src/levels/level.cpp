@@ -75,7 +75,7 @@ namespace rage {
         };
     }
 
-    void Level::Draw(const Resources &resources) const {
+    void Level::Draw(const Resources &resources, const GameConfig &config) const {
         resources.BeginClip(worldViewport);
         DrawRectangleRec(worldViewport, Color{36, 44, 60, 255});
         BeginMode2D(camera);
@@ -83,6 +83,9 @@ namespace rage {
         DrawWorld(resources);
         for (const auto platform: definition.platforms) art::Platform(resources, platform, definition.accent);
         art::Student(resources, player.Bounds());
+
+        DrawStaminaBar(resources, config);
+
         EndMode2D();
         EndScissorMode();
         DrawTextFit(resources, definition.title, {40, 26, 1380, 44}, 36, definition.accent);
@@ -90,5 +93,46 @@ namespace rage {
         dialogue.Draw(resources, {40, 714, 1520, 162}, currentCue.speaker.c_str(), currentCue.fontSize,
                       currentCue.allowSkip, currentCue.allowReplay);
         DrawTextFit(resources, definition.description, {40, 678, 1500, 28}, 22, Color{173, 165, 190, 255});
+    }
+
+    void Level::DrawStaminaBar(const Resources &resources, const GameConfig &config) const
+    {
+        // Draw stamina bar above player
+        const Rectangle playerBounds = player.Bounds();
+
+        const float barWidth = 40.0f;
+        const float barHeight = 6.0f;
+
+        const float barX = playerBounds.x + (playerBounds.width - barWidth) / 2.0f;
+        const float barY = playerBounds.y - 12.0f;
+
+        const float staminaPercent = player.StaminaPercent(config.maxStamina);
+
+        Color staminaColor = GREEN;
+
+        if (staminaPercent < 0.3f) {
+            staminaColor = RED;
+        }
+        else if (staminaPercent < 0.6f) {
+            staminaColor = YELLOW;
+        }
+
+        // Background
+        DrawRectangle(
+            (int)barX,
+            (int)barY,
+            (int)barWidth,
+            (int)barHeight,
+            DARKGRAY
+        );
+
+        // Current stamina
+        DrawRectangle(
+            (int)barX,
+            (int)barY,
+            (int)(barWidth * staminaPercent),
+            (int)barHeight,
+            staminaColor
+        );
     }
 }

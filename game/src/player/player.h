@@ -17,11 +17,14 @@ namespace rage {
         Vector2 Position() const { return position; }
         Vector2 Velocity() const { return velocity; }
         bool Grounded() const { return grounded; }
+        float StaminaPercent() const { return stamina / 100.0f; }
+        float StaminaPercent(float maxStamina) const {return maxStamina > 0.0f ? stamina / maxStamina : 0.0f;}
 
     private:
         Vector2 position = {};
         Vector2 velocity = {};
         bool grounded = false;
         bool climbing = false;
+        float stamina = 100.0f;
     };
 }

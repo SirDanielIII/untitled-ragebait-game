@@ -166,7 +166,7 @@ namespace rage {
     void Game::Draw(const Resources &resources, const std::string &settingsStatus) const {
         switch (screen) {
             case ScreenId::Playing:
-                if (activeLevel) activeLevel->Draw(resources);
+                if (activeLevel) activeLevel->Draw(resources,config);
                 return;
             case ScreenId::MainMenu: DrawMainMenu(resources);
                 break;
@@ -176,7 +176,7 @@ namespace rage {
                 break;
             case ScreenId::Paused:
                 if (activeLevel) {
-                    activeLevel->Draw(resources);
+                    activeLevel->Draw(resources,config);
                     DrawPauseMenu(resources, activeLevel->Definition());
                 }
                 break;
