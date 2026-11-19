@@ -156,7 +156,10 @@ void TestIdleTrap()
     const auto intro = level.CurrentDialogueId();
     game.Update(9, {.completeDialogue = true});
     game.Update(0.1f, {.move = 1});
-    game.Update(1, {});   // let the player finish sliding
+    // Allow the player to finish sliding before testing idle time.
+    for (int i = 0; i < 4; ++i) {
+        game.Update(0.1f, {});
+    }
     game.Update(9, {});
     game.Update(0, {.pause = true});
     game.Update(20, {});
