@@ -86,7 +86,7 @@ namespace rage {
         EndMode2D();
         EndScissorMode();
         DrawTextFit(resources, definition.title, {40, 26, 1380, 44}, 36, definition.accent);
-        DrawTextFit(resources, "A/D: move   Space: jump   Esc: pause   R: restart", {40, 88, 1480, 30}, 24, RAYWHITE);
+        DrawTextFit(resources, "A/D: move   Space: jump   W/UP: climb   Esc: pause   R: restart", {40, 88, 1480, 30}, 24, RAYWHITE);
         dialogue.Draw(resources, {40, 714, 1520, 162}, currentCue.speaker.c_str(), currentCue.fontSize,
                       currentCue.allowSkip, currentCue.allowReplay);
         DrawTextFit(resources, definition.description, {40, 678, 1500, 28}, 22, Color{173, 165, 190, 255});
