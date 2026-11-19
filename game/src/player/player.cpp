@@ -8,6 +8,13 @@ namespace rage {
         bool Overlaps(Rectangle a, Rectangle b) {
             return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
         }
+        constexpr float groundAcceleration = 900.0f; // px/s^2 while pressing a direction
+        constexpr float groundFriction = 500.0f;     // px/s^2 while coasting
+
+        float MoveToward(float current, float target, float maxDelta){
+            if (std::abs(target - current) <= maxDelta) return target;
+            return current + (target > current ? maxDelta : -maxDelta);
+        }
     }
 
     void Player::Reset(Vector2 spawn) {
@@ -53,7 +60,9 @@ namespace rage {
         // Also establishes support before a jump immediately after spawning/resetting.
         grounded = settleOnSupport();
         // One horizontal axis: opposite keys cancel; diagonal normalization is unnecessary.
-        velocity.x = std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
+        const float targetSpeed = std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
+        const float rate = input.move != 0.0f ? groundAcceleration : groundFriction;
+        velocity.x = MoveToward(velocity.x, targetSpeed, rate * std::min(dt, 0.1f));
         if (input.jump && grounded) {
             velocity.y = -config.jumpSpeed;
             grounded = false;
@@ -68,8 +77,11 @@ namespace rage {
                 if (!Overlaps(Bounds(), platform)) continue;
                 if (velocity.x > 0.0f) position.x = platform.x - Bounds().width;
                 else if (velocity.x < 0.0f) position.x = platform.x + platform.width;
+                velocity.x = 0.0f;
             }
+            const float beforeClamp = position.x;
             position.x = std::clamp(position.x, world.x, world.x + world.width - Bounds().width);
+            if (position.x != beforeClamp) velocity.x = 0.0f;
             velocity.y += config.gravity * step;
             position.y += velocity.y * step;
             grounded = false;
