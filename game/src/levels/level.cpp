@@ -11,11 +11,21 @@ namespace rage {
     Level::Level(const LevelDefinition &definition) : definition(definition) {
         camera.offset = {worldViewport.width / 2, worldViewport.y + worldViewport.height / 2};
         camera.zoom = 1.5f;
+        // Objects are initialised when the level loads, from its
+        // definitions. Leaving a level destroys the Level (and this
+        // manager with it), so no object can outlive its level.
+        for (const auto &objectDefinition : definition.objects) {
+            objects.Create(objectDefinition);
+        }
+        respawnPoint = definition.spawn;
     }
 
     void Level::Reset(const GameConfig &config) {
         events.Reset();
         player.Reset(definition.spawn);
+        respawnPoint = definition.spawn;
+        levelComplete = false;
+        objects.ResetAll();
         playerAnimator = {};
         playerAnimator.SetState("idle");
         playerFacing = Facing::Right;
@@ -51,11 +61,102 @@ namespace rage {
         dialogueDelay = std::max(0.0f, dialogueDelay - dt);
         dialogue.writer.Update(revealTime);
         PublishDialogueMilestones(revealMethod);
-        player.Update(dt, input, config, definition.platforms, definition.world);
+        // Objects move first, so the player stands on their updated
+        // bounds this frame. Hazards and triggers are checked after
+        // the player moves, and before events.Update(), so the
+        // notifications they post are visible to events this update.
+        objects.UpdateAll(dt);
+        player.Update(dt, input, config, objects.SolidBounds(), definition.world);
         UpdatePlayerAnimation(dt);
+        CheckHazardsAndTriggers();
         OnUpdate(dt, input);
         events.Update();
         UpdateCamera();
+    }
+
+    bool Level::ActivateObject(const std::string &id) {
+        if (!objects.Activate(id)) {
+            return false;
+        }
+        if (const GameObject *object = objects.Get(id)) {
+            NotifyObject(*object, objectEvents::activated);
+        }
+        return true;
+    }
+
+    bool Level::DeactivateObject(const std::string &id) {
+        if (!objects.Deactivate(id)) {
+            return false;
+        }
+        if (const GameObject *object = objects.Get(id)) {
+            NotifyObject(*object, objectEvents::activated);
+        }
+        return true;
+    }
+
+    bool Level::StartObjectFall(const std::string &id) {
+        return objects.StartFall(id);
+    }
+
+    void Level::NotifyObject(const GameObject &object, const char *topic) {
+        events.Notify({topic, ObjectNotificationId(object.Id())});
+    }
+
+    void Level::OnTrigger(GameObject &object) {
+        // Id conventions, so levels need no code for the common cases.
+        if (object.Id().rfind("checkpoint-", 0) == 0) {
+            respawnPoint = object.Position();
+        } else if (object.Id().rfind("exit-", 0) == 0) {
+            levelComplete = true;
+        }
+    }
+
+    void Level::CheckHazardsAndTriggers() {
+        // Actions that finished this frame (e.g. an anvil landing)
+        // post once, then the flag is consumed.
+        for (const auto &object : objects.Objects()) {
+            if (object->TakeActionCompleted()) {
+                NotifyObject(*object, objectEvents::actionCompleted);
+            }
+        }
+        const Rectangle playerBounds = player.Bounds();
+        // A hazard respawns the player at the last checkpoint (or the
+        // spawn). Objects are not reset, so a reached checkpoint
+        // survives the death.
+        for (auto *hazard : objects.Overlapping(playerBounds, CollisionType::Hazard)) {
+            NotifyObject(*hazard, objectEvents::hazardHit);
+            hazard->OnTrigger();
+            player.Reset(respawnPoint);
+            return;
+        }
+        // Triggers fire on entry only: the object's triggered flag is
+        // the "player is inside" state, cleared when they leave a
+        // repeatable trigger. One-shot triggers deactivate in
+        // OnTrigger, so they never fire twice.
+        for (auto &object : objects.Objects()) {
+            if (!object->IsActive() || object->Collision() != CollisionType::Trigger) {
+                continue;
+            }
+            const bool overlapping = CheckCollisionRecs(playerBounds, object->CollisionBounds());
+            if (overlapping && !object->IsTriggered()) {
+                object->OnTrigger();
+                NotifyObject(*object, objectEvents::triggerEntered);
+                OnTrigger(*object);
+            } else if (!overlapping && object->IsTriggered() && object->IsActive()) {
+                object->ClearTrigger();
+            }
+        }
+    }
+
+    void Level::SubmitSprites(RenderQueue &queue, const Resources &resources) const {
+        // Objects draw through the AssetManager: a Game Data row, or
+        // the platform placeholder while the art is not in the sheet.
+        // Collision bounds are independent of whichever is drawn.
+        const Color accent = definition.accent;
+        objects.SubmitSprites(queue, resources.Assets(),
+                              [&resources, accent](Rectangle bounds, bool) {
+                                  art::Platform(resources, bounds, accent);
+                              });
     }
 
     bool Level::ApplyDialogueSpeed() {
@@ -152,7 +253,6 @@ namespace rage {
         });
         queue.Submit(Layer::Middle, [&] {
             DrawWorld(resources);
-            for (const auto platform: definition.platforms) art::Platform(resources, platform, definition.accent);
         });
         SubmitSprites(queue, resources);
         SubmitPlayer(queue, resources);

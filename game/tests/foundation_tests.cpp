@@ -11,6 +11,7 @@ void TestLevelAuthoring();
 void TestEventManager();
 void TestGameData();
 void TestAssetRendering();
+void TestObjects();
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
 void TestWindowResize(void* handle);
 #endif
@@ -317,6 +318,7 @@ int RunSelfTests()
         TestLevelAuthoring();
         TestEventManager();
         TestGameData();
+        TestObjects();
         std::cout << "All foundation self-tests passed (no window/audio context required).\n";
         return 0;
     }

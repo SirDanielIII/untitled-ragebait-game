@@ -22,10 +22,10 @@ namespace rage {
             .backdrop = ArtId::Level3,
             .world = {0, 0, 1600, 700},
             .spawn = {100, 606},
-            .platforms = {
-                {0, 650, 1600, 50}, // Floor
-                {420, 550, 200, 24},
-                {750, 470, 180, 24},
+            .objects = {
+                {.id = "floor", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {0, 650}, .size = {1600, 50}, .assetId = "platform"},
+                {.id = "platform-1", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {420, 550}, .size = {200, 24}, .assetId = "platform"},
+                {.id = "platform-2", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {750, 470}, .size = {180, 24}, .assetId = "platform"},
             },
         };
         return definition;
