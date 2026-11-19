@@ -1,36 +1,51 @@
+
 #include "player/player.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace rage {
-    namespace {
-        bool Overlaps(Rectangle a, Rectangle b) {
-            return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-        }
+namespace {
+
+bool Overlaps(Rectangle a, Rectangle b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
+}
+
+} // namespace
+
+void Player::Reset(Vector2 spawn) {
+    position = spawn;
+    velocity = {};
+    grounded = false;
+    climbing = false;
+    stamina = 100.0f;
+}
+
+void Player::Update(float dt, const InputFrame& input,
+                    const GameConfig& config,
+                    std::span<const Rectangle> platforms,
+                    Rectangle world) {
+    if (!std::isfinite(dt) || dt <= 0.0f) {
+        return;
     }
-
-    void Player::Reset(Vector2 spawn) {
-        position = spawn;
-        velocity = {};
-        grounded = false;
-        stamina = 100.0f;
-    }
-
-
-void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
-                    std::span<const Rectangle> platforms, Rectangle world) {
-    if (!std::isfinite(dt) || dt <= 0.0f) return;
 
     auto settleOnSupport = [&]() {
-        if (velocity.y < 0.0f) return false;
+        if (velocity.y < 0.0f) {
+            return false;
+        }
 
         const Rectangle body = Bounds();
         const float bottom = body.y + body.height;
 
-        for (const Rectangle platform : platforms) {
-            if (body.x < platform.x + platform.width &&
-                body.x + body.width > platform.x &&
+        for (const Rectangle& platform : platforms) {
+            const bool horizontalOverlap =
+                body.x < platform.x + platform.width &&
+                body.x + body.width > platform.x;
+
+            if (horizontalOverlap &&
                 std::abs(bottom - platform.y) <= 0.01f) {
                 position.y = platform.y - body.height;
                 velocity.y = 0.0f;
@@ -38,8 +53,10 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
             }
         }
 
-        if (std::abs(bottom - (world.y + world.height)) <= 0.01f) {
-            position.y = world.y + world.height - body.height;
+        const float worldBottom = world.y + world.height;
+
+        if (std::abs(bottom - worldBottom) <= 0.01f) {
+            position.y = worldBottom - body.height;
             velocity.y = 0.0f;
             return true;
         }
@@ -54,20 +71,18 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
     const bool wasClimbing = climbing;
     climbing = false;
 
-<<<<<<< HEAD
     if (input.climb && stamina > 0.0f) {
-=======
-    if (input.climb) {
->>>>>>> 97544b04d226c69ea96d33c2d9629d0db25ad829
         const Rectangle body = Bounds();
         constexpr float CONTACT_DISTANCE = 2.0f;
 
-        for (const Rectangle platform : platforms) {
+        for (const Rectangle& platform : platforms) {
             const bool verticalOverlap =
                 body.y < platform.y + platform.height &&
                 body.y + body.height > platform.y;
 
-            if (!verticalOverlap) continue;
+            if (!verticalOverlap) {
+                continue;
+            }
 
             const float playerRight = body.x + body.width;
             const float platformRight = platform.x + platform.width;
@@ -99,11 +114,7 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
         : std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
 
     // Space still works for jumping. W/UP can initiate climbing instead.
-<<<<<<< HEAD
     if (input.jump && grounded && !climbing && stamina > 0.0f) {
-=======
-    if (input.jump && grounded && !climbing) {
->>>>>>> 97544b04d226c69ea96d33c2d9629d0db25ad829
         velocity.y = -config.jumpSpeed;
         grounded = false;
     }
@@ -123,13 +134,16 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
         // Horizontal movement and collision.
         position.x += velocity.x * step;
 
-        for (const auto platform : platforms) {
-            if (!Overlaps(Bounds(), platform)) continue;
+        for (const Rectangle& platform : platforms) {
+            if (!Overlaps(Bounds(), platform)) {
+                continue;
+            }
 
-            if (velocity.x > 0.0f)
+            if (velocity.x > 0.0f) {
                 position.x = platform.x - Bounds().width;
-            else if (velocity.x < 0.0f)
+            } else if (velocity.x < 0.0f) {
                 position.x = platform.x + platform.width;
+            }
         }
 
         position.x = std::clamp(
@@ -144,19 +158,19 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
         }
 
         position.y += velocity.y * step;
-
         grounded = false;
 
         // Vertical platform collision.
-        for (const auto platform : platforms) {
-            if (!Overlaps(Bounds(), platform)) continue;
+        for (const Rectangle& platform : platforms) {
+            if (!Overlaps(Bounds(), platform)) {
+                continue;
+            }
 
             if (velocity.y > 0.0f) {
                 position.y = platform.y - Bounds().height;
                 velocity.y = 0.0f;
                 grounded = true;
-            }
-            else if (velocity.y < 0.0f) {
+            } else if (velocity.y < 0.0f) {
                 position.y = platform.y + platform.height;
                 velocity.y = 0.0f;
             }
@@ -179,24 +193,21 @@ void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
         }
     }
 
-        if (grounded) {
-            stamina += config.staminaRegen * dt;
-        }
-        else if (climbing) {
-            stamina -= config.climbStaminaDrain * dt;
-        }
-        else {
-            stamina -= config.jumpStaminaDrain * dt;
-        }
+    // Stamina management.
+    if (grounded) {
+        stamina += config.staminaRegen * dt;
+    } else if (climbing) {
+        stamina -= config.climbStaminaDrain * dt;
+    } else {
+        stamina -= config.jumpStaminaDrain * dt;
+    }
 
-        stamina = std::clamp(stamina, 0.0f, config.maxStamina);
+    stamina = std::clamp(stamina, 0.0f, config.maxStamina);
 
-        if (stamina <= 0.0f) {
-            climbing = false;
-            velocity.y = 0.0f;
-        }
+    if (stamina <= 0.0f) {
+        climbing = false;
+        velocity.y = 0.0f;
+    }
 }
 
-}
-
-}
+} // namespace rage

@@ -25,9 +25,6 @@ namespace rage {
         Vector2 velocity = {};
         bool grounded = false;
         bool climbing = false;
-<<<<<<< HEAD
         float stamina = 100.0f;
-=======
->>>>>>> 97544b04d226c69ea96d33c2d9629d0db25ad829
     };
 }
