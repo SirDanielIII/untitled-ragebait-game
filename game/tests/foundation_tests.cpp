@@ -224,7 +224,7 @@ void TestMovement()
     player.Update(1.0f / 60, {}, config, platforms, world);
     Check(player.Grounded(), "Initial floor contact failed");
     for (int i = 0; i < 60; ++i) player.Update(1.0f / 60, right, config, platforms, world);
-    Check(Near(player.Position().x, 323.5f, 0.5f), "Movement does not accelerate toward moveSpeed");
+    Check(Near(player.Position().x, 338.6f, 0.5f), "Movement does not accelerate toward moveSpeed");
     Player slowFrames;
     slowFrames.Reset({100, 606});
     for (int i = 0; i < 30; ++i) slowFrames.Update(1.0f / 30, right, config, platforms, world);

@@ -10,6 +10,7 @@ namespace rage {
         }
         constexpr float groundAcceleration = 900.0f; // px/s^2 while pressing a direction
         constexpr float groundFriction = 500.0f;     // px/s^2 while coasting
+        constexpr float startSpeed = 60.0f;
 
         float MoveToward(float current, float target, float maxDelta){
             if (std::abs(target - current) <= maxDelta) return target;
@@ -78,6 +79,9 @@ namespace rage {
         }
         // Small steps keep simple axis-separated AABB collisions reliable at lower frame rates.
         float remaining = std::min(dt, 0.1f);
+        if (input.move != 0.0f && std::abs(velocity.x) < startSpeed && velocity.x * input.move >= 0.0f) {
+            velocity.x = std::clamp(input.move, -1.0f, 1.0f) * startSpeed;
+        }
         while (remaining > 0.0f) {
             const float step = std::min(remaining, 1.0f / 120.0f);
             remaining -= step;
