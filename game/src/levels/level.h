@@ -5,6 +5,7 @@
 #include "engine/assets/render_queue.h"
 #include "engine/resources/asset_paths.h"
 #include "levels/event_manager.h"
+#include "objects/object_manager.h"
 #include <vector>
 #include <string>
 #include "player/player.h"
@@ -51,7 +52,11 @@ namespace rage {
         ArtId backdrop;
         Rectangle world;
         Vector2 spawn;
-        std::vector<Rectangle> platforms;
+        // Every object in the level, as reusable definitions. The
+        // Level creates them in its ObjectManager on construction;
+        // collision geometry comes from these, not from artwork.
+        // (Previously a list of platform rectangles; see objects/.)
+        std::vector<GameObjectDefinition> objects;
     };
 
     class Level {
@@ -74,10 +79,23 @@ namespace rage {
         float ElapsedSeconds() const { return elapsedSeconds; }
         const Animator &PlayerAnimator() const { return playerAnimator; }
         Facing PlayerFacing() const { return playerFacing; }
+        ObjectManager &Objects() { return objects; }
+        const ObjectManager &Objects() const { return objects; }
+        bool IsComplete() const { return levelComplete; }
+        Vector2 RespawnPoint() const { return respawnPoint; }
 
     protected:
         EventManager &Events() { return events; }
         Player &MutablePlayer() { return player; }
+        // Event-facing object actions. These are the consistent
+        // interface events use (see ObjectManager): they change the
+        // object and post the matching objectEvents notification, so
+        // other events can react to it in the next update.
+        bool ActivateObject(const std::string &id);
+        bool DeactivateObject(const std::string &id);
+        bool StartObjectFall(const std::string &id);
+        GameObject *SpawnObject(const GameObjectDefinition &definition) { return objects.Spawn(definition); }
+        bool RemoveObject(const std::string &id) { return objects.Remove(id); }
         bool CanSay() const;
         // Returns 0 if busy. Use CanSay in polling event conditions to retry.
         DialogueMessageId Say(DialogueCue cue, DialoguePolicy policy = DialoguePolicy::WhenAvailable);
@@ -98,11 +116,20 @@ namespace rage {
 
         // Queue this level's Game Data sprites (hazards, props, effects). Each is drawn on its
         // configured layer; Middle-layer sprites appear behind the player.
-        virtual void SubmitSprites(RenderQueue &, const Resources &) const {
-        }
+        // The base implementation queues the level's game objects;
+        // subclasses add their own sprites on top of it.
+        virtual void SubmitSprites(RenderQueue &queue, const Resources &resources) const;
+
+        // Called when the player enters a trigger object. The base
+        // version handles the id conventions: "checkpoint-*" sets the
+        // respawn point, "exit-*" completes the level. Subclasses can
+        // override it for stage-specific triggers.
+        virtual void OnTrigger(GameObject &object);
 
     private:
         void UpdateCamera();
+        void CheckHazardsAndTriggers();
+        void NotifyObject(const GameObject &object, const char *topic);
 
         bool ApplyDialogueSpeed();
         void PublishDialogueMilestones(DialogueRevealMethod method);
@@ -125,6 +152,9 @@ namespace rage {
         Animator playerAnimator;
         Facing playerFacing = Facing::Right;
         EventManager events;
+        ObjectManager objects;
+        Vector2 respawnPoint{};
+        bool levelComplete = false;
     };
 
     // Level list and factories are implemented in main.cpp, beside the level handler.

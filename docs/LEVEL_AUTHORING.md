@@ -15,7 +15,7 @@ Paths in this guide are relative to `game/src/` unless shown with a `game/` pref
 | Level 2 | `levels/level_2/level_2.cpp` | Climb to the top-floor classroom |
 | Level 3 | `levels/level_3/level_3.cpp` | Face the Entity outside the lecture hall |
 
-The `LevelDefinition` at the top of each file contains the title, description, intro, backdrop, world bounds, spawn and platforms. The level instance owns the stage's runtime state. `main.cpp` registers definitions and factories for stage selection.
+The `LevelDefinition` at the top of each file contains the title, description, intro, backdrop, world bounds, spawn and objects. The level instance owns the stage's runtime state. `main.cpp` registers definitions and factories for stage selection.
 
 ## Loading and switching levels
 
@@ -27,22 +27,70 @@ Automatic progression to the next level has not been implemented.
 
 ## Layout
 
-Edit `.world`, `.spawn` and `.platforms` in the stage definition. Coordinates are world pixels; rectangles use `{x, y, width, height}`. The player's collision box is 30 by 44 pixels.
+Edit `.world`, `.spawn` and `.objects` in the stage definition. Coordinates are world pixels. The player's collision box is 30 by 44 pixels.
 
-`.backdrop` selects a background image. Collision geometry comes from `.platforms`, independently of the image. Add stage-specific drawing in `DrawWorld(const Resources&) const`; it runs inside the world camera, before platforms and the player are drawn.
+`.backdrop` selects a background image. Collision geometry comes from `.objects`, independently of the image. Add stage-specific drawing in `DrawWorld(const Resources&) const`; it runs inside the world camera, before objects and the player are drawn.
 
-For objects with art in the Game Data sheet (hazards, props, effects), override `SubmitSprites` and queue them by ID. Each one is drawn on its sheet layer, at its pivot, with a placeholder box until its PNG exists:
+### Game objects
+
+Levels do not list platform rectangles or write their own object
+management. They list `GameObjectDefinition`s in `.objects`, and
+`Level` creates them in its `ObjectManager` (see
+`game/src/objects/`). The same definition can be reused with
+different positions, sizes and speeds; no new class is needed for a
+new obstacle.
 
 ```cpp
-void SubmitSprites(RenderQueue& queue, const Resources& resources) const override
-{
-    const auto& assets = resources.Assets();
-    if (const auto* anvil = assets.Find("anvil_fall"))
-        queue.Submit(assets, *anvil, anvilAnimator.Frame(*anvil), anvilPosition);
-}
+.objects = {
+    {.id = "floor", .type = ObjectType::Static, .collision = CollisionType::Solid,
+     .position = {0, 650}, .size = {1500, 50}, .assetId = "platform"},
+    {.id = "anvil", .type = ObjectType::Moving, .collision = CollisionType::Hazard,
+     .position = {400, 200}, .size = {40, 40}, .velocity = {0, 200},
+     .range = {0, 400}, .falls = true, .assetId = "anvil"},
+    {.id = "checkpoint-1", .type = ObjectType::Trigger, .collision = CollisionType::Trigger,
+     .position = {200, 600}, .size = {60, 50}},  // no assetId: intentionally invisible
+    {.id = "exit-1", .type = ObjectType::Trigger, .collision = CollisionType::Trigger,
+     .position = {1200, 600}, .size = {60, 50}},
+},
 ```
 
-Keep an `Animator` member per animated object, call `animator.SetState("fall")` and `animator.Update(dt)` from `OnUpdate`, and reset it in `OnReset`. Sprite size never affects collision; keep hazard rectangles in the level code. See [ART_ASSETS.md](ART_ASSETS.md#game-data-sprites-and-animations).
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique instance id, used to look the object up (`Objects().Get(id)`) |
+| `type` | `Static`, `Moving`, `Hazard`, `Interactive` or `Trigger` |
+| `collision` | `None`, `Solid`, `Hazard` or `Trigger` |
+| `position` / `size` | Visual bounds, in world pixels |
+| `velocity` / `range` | Moving objects ping-pong within `range`; falling objects fall by `range.y` |
+| `falls` | The object only moves once triggered (e.g. an anvil) |
+| `collisionOffset` / `collisionSize` | Collision box, relative to position; defaults to `size` |
+| `assetId` | Game Data Asset ID, e.g. `"platform"`; empty means intentionally invisible |
+| `initialState` | Animation state, e.g. `"idle"`; the animation is `<assetId>_<state>` |
+| `active` / `visible` | Enabled and drawn state; both reset on restart |
+| `triggerOnce` | The trigger / hazard deactivates after firing once |
+
+The object system provides the shared behaviour; object-specific
+mechanics stay in the object class (`MovingObject`,
+`FallingObject`), never in the manager or the level:
+
+- **Static:** floors, walls, platforms. Solid collision, no movement.
+- **Moving:** horizontal / vertical platforms and obstacles, ping-ponging in their range.
+- **Falling:** stays put until `StartFall()` (from a trigger or an event), then falls by `range.y` and stops. Landing posts `objectEvents::actionCompleted`.
+- **Hazards:** contact respawns the player at the last checkpoint and posts `objectEvents::hazardHit`. They can be activated / deactivated, once or repeatedly.
+- **Interactive / triggers:** checkpoints (`checkpoint-*` sets the respawn point), level exits (`exit-*` completes the level), and invisible trigger zones. Entering one posts `objectEvents::triggerEntered`.
+
+Collision bounds are independent of sprite dimensions, so replacing
+artwork never changes gameplay. Moving objects update their bounds
+as they move, because `Level` passes `Objects().SolidBounds()` —
+rebuilt every frame — to the player.
+
+For art, objects use the AssetManager, not a fixed art slot: each
+object keeps an `Animator` for its current state, and `Level`
+queues its sprites through `SubmitSprites` on the sheet layer, at
+the sheet pivot, with a placeholder when its texture is missing
+(see [ART_ASSETS.md](ART_ASSETS.md#game-data-sprites-and-animations)).
+Adding a Game Data row for an asset (e.g. `platform_idle`) makes
+the finished art appear with no gameplay-code change. An object
+with no `assetId` is never drawn.
 
 The current layouts are placeholders. The stairwell needs a blueprint before its climbing sections are designed.
 
@@ -73,9 +121,13 @@ void OnUpdate(float dt, const InputFrame& input) override
 | `CanSay()` | Check whether a dialogue request can start this frame |
 | `Say(DialogueCue)` | Start a message and return its level-local request ID, or zero if busy |
 | `Events()` | Register events, post notifications and query completion |
+| `Objects()` | The level's `ObjectManager`: look objects up by id, spawn / remove / activate / deactivate them, start a fall |
+| `ActivateObject(id)` / `DeactivateObject(id)` / `StartObjectFall(id)` | Event-facing object actions; they also post `objectEvents::activated` |
+| `IsComplete()` | True once an `exit-*` trigger has been entered |
+| `RespawnPoint()` | Last checkpoint position, or the spawn |
 | `Definition()` | Read the authored level data |
 
-The update order is dialogue, player movement, `OnUpdate`, event evaluation, then camera follow. Pause and Settings suspend scene updates. Restart Stage and R clear event completion and pending notifications, restore the player, elapsed time and opening dialogue, then call `OnReset` and update the camera. Clear stage-specific state in `OnReset`. Opening Main Menu or Dev Level Select destroys the active level and its events.
+The update order is dialogue, object movement, player movement, hazard and trigger checks, `OnUpdate`, event evaluation, then camera follow. Pause and Settings suspend scene updates. Restart Stage and R clear event completion and pending notifications, restore the player, elapsed time and opening dialogue, reset all objects, then call `OnReset` and update the camera. Clear stage-specific state in `OnReset`. Opening Main Menu or Dev Level Select destroys the active level, its objects and its events.
 
 Keep update logic out of drawing functions. Use the application's existing frame loop rather than adding a loop inside a stage.
 
@@ -107,6 +159,35 @@ std::vector<Event> Level0::CreateEvents()
 In this example `doorCue` and `handleEnabled` are level members. See Level 0 for a complete sequence. `Events().IsCompleted(id)` becomes true after an event's callback returns and stays true until the level resets. Add `.repeatable = true` to run again when a condition goes false and then true, or when another matching notification arrives in a later update.
 
 Post notifications with `Events().Notify({"door.interact", doorId})`. Events share the notifications for one update, and each event runs at most once per update. If its prerequisites or condition are unmet when evaluated, it needs a fresh notification. Notifications posted inside event callbacks are processed on the next update.
+
+Objects post their own notifications, so events can react to them
+without polling: `objectEvents::triggerEntered`,
+`objectEvents::hazardHit`, `objectEvents::activated` and
+`objectEvents::actionCompleted`, each with `sourceId` equal to
+`ObjectNotificationId(objectId)`. Events act on objects through
+`ActivateObject(id)`, `DeactivateObject(id)`, `StartObjectFall(id)`,
+`SpawnObject(definition)` and `RemoveObject(id)`, and check their
+state with `Objects().IsActive(id)` / `Objects().IsTriggered(id)`:
+
+```cpp
+{
+    .id = "anvil-drops",
+    .execute = [this] { StartObjectFall("anvil"); },
+    .matchesNotification = [](const EventNotification& notice) {
+        return notice.topic == objectEvents::triggerEntered &&
+               notice.sourceId == ObjectNotificationId("anvil-trigger");
+    }
+},
+{
+    .id = "anvil-landed",
+    .execute = [this] { Say({.text = "That was close."}); },
+    .dependencies = {"anvil-drops"},
+    .matchesNotification = [](const EventNotification& notice) {
+        return notice.topic == objectEvents::actionCompleted &&
+               notice.sourceId == ObjectNotificationId("anvil");
+    }
+}
+```
 
 ## Dialogue
 
@@ -148,7 +229,7 @@ The student is sleep deprived and late for class. The Entity gives unreliable ad
 - **Level 2 (stairwell):** missing stairs, exposed bricks to climb, falling bricks. Design the level blueprint before expanding these mechanics.
 - **Level 3 (lecture hall):** shifting floors, floating desks and chairs, paper airplanes, wall climbing and the Entity blocking entry.
 
-These hazards, lives, checkpoints, death, stage completion, climbing controls and the boss are pending gameplay work.
+Basic hazards (respawn at the last checkpoint), checkpoints and stage completion via `exit-*` / `IsComplete()` are provided by the object system. Lives, climbing controls and the boss are pending gameplay work.
 
 ## Adding a stage
 
