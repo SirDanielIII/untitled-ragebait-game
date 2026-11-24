@@ -5,7 +5,7 @@ Every sprite and animation in the game is described in the **CISC 320 Game Data*
 - **Changing art** (a new PNG, a different size, frame count, speed, pivot or layer) needs **no code**.
 - **Putting a new object in a level** needs a few lines in that level's file, because the sheet says *what* something looks like, not *where* it goes.
 
-Contents: [Folders](#folders) · [1. Make the art](#1-make-the-art) · [2. Describe it in Game Data](#2-describe-it-in-game-data) · [3. Get it into the game](#3-get-it-into-the-game) · [4. Player art](#4-player-art) · [5. Place objects in a level](#5-place-objects-in-a-level) · [6. Animated objects](#6-animated-objects) · [Changing existing art](#changing-existing-art) · [Placeholders and invisible objects](#placeholders-and-invisible-objects) · [Troubleshooting](#troubleshooting) · [Code reference](#code-reference) · [Tests](#tests) · [Committing](#committing)
+Contents: [Folders](#folders) · [1. Make the art](#1-make-the-art) · [2. Describe it in Game Data](#2-describe-it-in-game-data) · [3. Get it into the game](#3-get-it-into-the-game) · [4. Player art](#4-player-art) · [5. Place objects in a level](#5-place-objects-in-a-level) · [6. Animated objects](#6-animated-objects) · [How sprites are scaled](#how-sprites-are-scaled) · [Changing existing art](#changing-existing-art) · [Placeholders and invisible objects](#placeholders-and-invisible-objects) · [Troubleshooting](#troubleshooting) · [Code reference](#code-reference) · [Tests](#tests) · [Committing](#committing)
 
 ## Folders
 
@@ -114,18 +114,32 @@ private:
 
     // Called every frame while drawing. Queue this level's sprites here.
     void SubmitSprites(RenderQueue &queue, const Resources &resources) const override {
+        Level::SubmitSprites(queue, resources);              // keep this: it draws the level's game objects
         const auto &assets = resources.Assets();
         if (const auto *desk = assets.Find("school_desk"))
-            queue.Submit(assets, *desk, 0, {600, 650});      // frame 0, pivot at x 600, y 650
+            queue.Submit(assets, *desk, 0, SnapToPixels({600, 650}));   // frame 0, pivot at x 600, y 650
         if (const auto *sign = assets.Find("exit_sign"))
-            queue.Submit(assets, *sign, 0, {2400, 560});
+            queue.Submit(assets, *sign, 0, SnapToPixels({2400, 560}));
     }
 };
 ```
 
 - `assets.Find("school_desk")` must match the **Animation ID** exactly. If the ID isn't in the sheet it returns `nullptr` and the `if` skips it, so nothing breaks.
 - The sprite goes on the **Layer** from the sheet automatically.
+- **Always call `Level::SubmitSprites(queue, resources)` first.** The base version draws the level's game objects; skipping it makes them invisible.
+- Wrap positions in `SnapToPixels(...)` so sprites stay crisp while the camera moves. It only changes where the sprite is drawn, not its gameplay position.
 - Build and run to see it.
+
+### Fitting a sprite into a rectangle
+
+To make a sprite as large as possible inside a rectangle (a sign on a wall, an icon in a slot) use `SubmitFitted`:
+
+```cpp
+if (const auto *sign = assets.Find("exit_sign"))
+    queue.SubmitFitted(assets, *sign, 0, {2380, 500, 60, 60}, Facing::None, Camera().zoom);
+```
+
+The sprite keeps its shape (it is never stretched), its size is rounded down so every art pixel stays a whole number of screen pixels, and its pivot is anchored to the same point of the rectangle: bottom-centre on the rectangle's bottom edge, top-left in its corner, centre in its middle. A missing PNG draws its placeholder in the same area. Pass `Camera().zoom` in levels; use `1` for drawing straight onto the 1600×900 canvas.
 
 ### Choosing coordinates
 
@@ -187,6 +201,23 @@ private:
 - `anvilAnimator.Frame(*anvil)` picks the frame from the sheet's FPS and Loops. `anvilAnimator.Finished(*anvil)` tells you when a non-looping animation is done.
 - **Facing:** pass a fifth argument to mirror art, e.g. `queue.Submit(assets, *anvil, frame, position, Facing::Left)`. The image is mirrored when that is the opposite of the row's Faces value.
 
+## How sprites are scaled
+
+Sprites are always scaled **uniformly** (the same amount across and down), so art is never stretched or squashed, and always with **nearest-neighbour** filtering, so pixels stay hard-edged instead of blurring.
+
+| Setting | Where | Effect |
+| --- | --- | --- |
+| `pixelScale` (2) | `engine/assets/asset_manager.h` | Every Game Data sprite is drawn this many times its PNG size. Artists export at 100%. |
+| Camera zoom (2) | `Level::Level` in `levels/level.cpp` | Levels are magnified on screen. With `pixelScale` 2, each art pixel is 4×4 canvas pixels. |
+| Best fit (optional) | `queue.SubmitFitted` / `assets.DrawFitted` | Fits a sprite inside a rectangle without stretching, rounded to whole pixels (see above). |
+
+Keep `pixelScale × camera zoom` a whole number (with zoom 2, any whole `pixelScale` works). Otherwise art pixels come out uneven, some columns wider than others.
+
+Two more things keep pixel art clean, with nothing for you to do:
+
+- **Pixel snapping.** The camera and the player are drawn at whole canvas pixels (`Level::SnapToPixels`), so edges don't flicker as the camera scrolls. Physics still uses exact positions. Use `SnapToPixels` for your own sprites too.
+- **Window scaling.** The game draws on a fixed 1600×900 canvas, then copies it to the window (`ChoosePresentation` in `engine/graphics/layout.h`). At exactly 1×, 2× and so on it uses nearest-neighbour. At in-between sizes, such as a maximized window or a laptop at 125% display scaling, it enlarges with nearest-neighbour to the next whole multiple, then shrinks smoothly to fit, so pixels stay crisp. Below 1× it shrinks smoothly.
+
 ## Changing existing art
 
 No code is needed for any of these. Change it, export the CSV if the sheet changed, then build and run:
@@ -217,6 +248,8 @@ Placement in levels stays the same because positions refer to the pivot, not the
 | Sprite floats above the ground | Empty space at the bottom of the PNG; crop it. Or the Pivot isn't `bottom-centre`. |
 | Sprite is the wrong size | Frame Width and Height must match the PNG exported at 100%. The overall size is set by `pixelScale` in `asset_manager.h`. |
 | Sprite is blurry | The PNG was resized in the art program. Export at 100%, or use nearest-neighbour scaling if you must resize. |
+| Some art pixels are wider than others | `pixelScale × camera zoom` is not a whole number. See [How sprites are scaled](#how-sprites-are-scaled). |
+| Level objects disappeared after adding `SubmitSprites` | The override doesn't call `Level::SubmitSprites(queue, resources)` first. |
 | Animation doesn't move | FPS is blank or 0, or Frames is 1. |
 | Animation stops on the last frame | Loops is `No`. |
 | Character faces the wrong way | Faces is wrong, or blank (never mirrored). |
@@ -237,7 +270,8 @@ The calls you will use:
 const auto &assets = resources.Assets();                    // available anywhere you have Resources
 const AnimationData *a = assets.Find("player_walk");        // by Animation ID (nullptr if missing)
 const AnimationData *b = assets.Find("player_character", "walk"); // by Asset ID + state
-queue.Submit(assets, *a, frame, {x, y}, Facing::Right);     // draw on its layer (inside SubmitSprites)
+queue.Submit(assets, *a, frame, SnapToPixels({x, y}), Facing::Right); // draw on its layer (inside SubmitSprites)
+queue.SubmitFitted(assets, *a, frame, {x, y, w, h}, Facing::None, Camera().zoom); // best fit, no stretching
 queue.Submit(Layer::Foreground, [] { /* any raylib drawing */ });
 
 Animator animator;

@@ -283,9 +283,22 @@ void TestAssetRendering()
     RenderQueue queue;
     queue.Submit(Layer::Foreground, [] { DrawRectangle(800, 60, 20, 20, RED); });
     queue.Submit(Layer::Background, [] { DrawRectangle(800, 60, 20, 20, BLUE); });
+
+    // Best fit: the 8x8 frame goes into a 60x100 box. min(60/8, 100/8) = 7.5 rounds down to 7,
+    // so it is drawn 56x56 (square, not stretched), standing on the box's bottom-centre:
+    // x 902-958, y 84-140. Frame 0 is red on its left half, white on its right half.
+    const bool fitted = assets.DrawFitted(*walk, 0, {900, 40, 60, 100}, Facing::Right) == DrawResult::Texture &&
+                        assets.DrawFitted(*walk, 0, {1000, 40, 60, 100}, Facing::Left) == DrawResult::Texture;
+    bool fittedPlaceholder = false;
+    assets.DrawFitted(*ghost, 0, {1100, 40, 40, 80}, Facing::None, 1, [&](Rectangle bounds, bool) {
+        // Centre pivot: 8x8 fits 40x80 at 5x, so a 40x40 box centred in the target.
+        fittedPlaceholder = bounds.x == 1100 && bounds.y == 60 && bounds.width == 40 && bounds.height == 40;
+    });
+    queue.SubmitFitted(assets, *walk, 3, {1200, 40, 32, 32}); // Frame 3 (yellow) fills 32x32 at 4x.
     queue.Flush();
     EndTextureMode();
     Check(drew && customPlaceholder, "Draw results or placeholder bounds are wrong");
+    Check(fitted && fittedPlaceholder, "Best-fit draw results or placeholder bounds are wrong");
 
     Image rendered = LoadImageFromTexture(resources.Canvas().texture);
     ImageFlipVertical(&rendered);
@@ -299,6 +312,13 @@ void TestAssetRendering()
     const Color placeholder = pixel(500, 70);
     const bool placeholderOk = placeholder.r > 0 && placeholder.b > 0 && Same(pixel(604, 64), BLACK);
     const bool layerOk = Same(pixel(810, 70), RED);
+    // A sharp edge at x 929/930 with no blended colour in between, no stretching above y 84,
+    // the bottom on the box's bottom edge, mirroring, and the queue path.
+    const bool fitOk = Same(pixel(905, 120), red) && Same(pixel(929, 120), red) && Same(pixel(930, 120), white) &&
+                       Same(pixel(955, 120), white) && Same(pixel(930, 80), BLACK) && Same(pixel(930, 139), white) &&
+                       Same(pixel(930, 141), BLACK);
+    const bool fitFlipOk = Same(pixel(1005, 120), white) && Same(pixel(1055, 120), red);
+    const bool fitQueueOk = Same(pixel(1216, 56), yellow);
     UnloadImage(rendered);
     Check(pivotOk, "Bottom-centre pivot or frame 0 rendering failed");
     Check(flipOk, "Horizontal flip failed");
@@ -306,6 +326,9 @@ void TestAssetRendering()
     Check(topLeftOk, "Top-left pivot or static asset rendering failed");
     Check(placeholderOk, "Missing art did not draw a placeholder, or an invisible object was drawn");
     Check(layerOk, "Layers were drawn in the wrong order");
-    std::cout << "PASS: Game Data textures (static, strip/grid animation, shared PNG), pivots, flipping, placeholders and layers\n";
+    Check(fitOk, "Best fit did not fill its box crisply without stretching, or left its pivot");
+    Check(fitFlipOk, "Best fit did not mirror correctly");
+    Check(fitQueueOk, "RenderQueue::SubmitFitted did not draw the fitted frame");
+    std::cout << "PASS: Game Data textures (static, strip/grid animation, shared PNG), pivots, flipping, placeholders, layers and crisp best fit\n";
 }
 }
