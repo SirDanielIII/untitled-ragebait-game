@@ -154,6 +154,23 @@ void TestFramesAndPlayback()
     const Rectangle drawn = AssetManager::Bounds(sprite, {100, 650});
     Check(drawn.width == 16 * pixelScale && drawn.height == 32 * pixelScale, "Pixel scale was not applied");
     Check(drawn.x + drawn.width / 2 == 100 && drawn.y + drawn.height == 650, "Scaled sprite moved off its pivot");
+    Check(FitScale(16, 32, 30, 44, 2) == 1, "Best fit should round down to whole screen pixels");
+    Check(FitScale(16, 32, 64, 128, 2) == 4, "Best fit should fill an exact multiple");
+    Check(FitScale(16, 32, 4, 4, 2) == 0.5f, "Best fit must keep at least one screen pixel per art pixel");
+    Check(FitScale(32, 16, 30, 44, 2) == 0.5f, "Best fit must use the tighter side (wide art in a tall box)");
+
+    // Window presentation: whole multiples are exact, other enlargements go through a sharp
+    // upscale, and shrinking or oversized targets fall back to smooth scaling.
+    const auto present = [](float scale, PresentMode mode, int factor) {
+        const Presentation chosen = ChoosePresentation(scale);
+        return chosen.mode == mode && chosen.factor == factor;
+    };
+    Check(present(1.0f, PresentMode::Exact, 1) && present(2.0f, PresentMode::Exact, 2) &&
+          present(1.0005f, PresentMode::Exact, 1), "Whole-number window scales should be exact");
+    Check(present(1.6f, PresentMode::SharpUpscale, 2) && present(1.2f, PresentMode::SharpUpscale, 2) &&
+          present(2.4f, PresentMode::SharpUpscale, 3), "Fractional enlargements should upscale sharply");
+    Check(present(0.854f, PresentMode::Smooth, 1) && present(0.0f, PresentMode::Smooth, 1) &&
+          present(5.3f, PresentMode::Smooth, 1), "Shrinking, invalid and oversized scales should be smooth");
     Check(ShouldFlip(Facing::Right, Facing::Left) && !ShouldFlip(Facing::Right, Facing::Right) &&
           !ShouldFlip(Facing::None, Facing::Left), "Facing flip rule failed");
 

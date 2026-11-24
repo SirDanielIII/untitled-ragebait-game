@@ -61,6 +61,7 @@ namespace rage {
                              animation->fileName.c_str(), animation->animationId.c_str(), animatedArtFolder, staticArtFolder);
                     continue;
                 }
+                SetTextureFilter(texture, TEXTURE_FILTER_POINT); // Nearest-neighbour: pixel art stays sharp when scaled.
                 textures.emplace(animation->fileName, texture);
             }
             // Catch PNGs that are smaller than the sheet says, e.g. a strip exported with
@@ -115,6 +116,17 @@ namespace rage {
         if (flipped) source.width = -source.width; // Raylib mirrors a negative source width.
         DrawTexturePro(*texture, source, bounds, {0, 0}, 0, tint);
         return DrawResult::Texture;
+    }
+
+    DrawResult AssetManager::DrawFitted(const AnimationData &animation, int frame, Rectangle target, Facing facing,
+                                        float pixelsPerUnit, const PlaceholderDrawer &placeholder) const {
+        const float scale = FitScale(animation.frameWidth, animation.frameHeight, target.width, target.height, pixelsPerUnit);
+        // Anchor the sprite's pivot to the matching point of the target rectangle.
+        float anchorX = 0;
+        float anchorY = 0;
+        PivotOffset(animation.pivot, target.width, target.height, anchorX, anchorY);
+        // Reuse Draw, so flipping, animation frames and placeholders work unchanged.
+        return Draw(animation, frame, {target.x + anchorX, target.y + anchorY}, facing, placeholder, scale);
     }
 
     void AssetManager::DrawPlaceholderBox(Rectangle bounds, bool flipped, bool directional) {

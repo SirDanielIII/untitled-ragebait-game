@@ -33,6 +33,10 @@ namespace rage {
 
         RenderTexture2D Canvas() const { return canvas; }
 
+        // Intermediate target for sharp upscaling, `factor` times the canvas size. Created when
+        // first needed and recreated only when the factor changes. id is 0 if it could not be made.
+        RenderTexture2D UpscaleTarget(int factor);
+
         void PlayClick(const GameConfig &config) const;
 
         void BeginClip(Rectangle logicalBounds) const;
@@ -43,6 +47,8 @@ namespace rage {
 
     private:
         RenderTexture2D canvas = {};
+        RenderTexture2D upscale = {};
+        int upscaleFactor = 0; // Factor `upscale` was made for (also remembered after a failure).
         Sound click = {};
         Font uiFont = {};
         bool ownsFont = false;

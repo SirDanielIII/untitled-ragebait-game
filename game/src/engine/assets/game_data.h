@@ -83,6 +83,12 @@ namespace rage {
     // Art with no direction (Facing::None) is never mirrored.
     bool ShouldFlip(Facing art, Facing object);
 
+    // Uniform scale that fits a frame inside a target size without stretching, rounded down so
+    // each art pixel covers a whole number of screen pixels. `pixelsPerUnit` is the camera zoom
+    // (2 in levels, 1 for UI). Never goes below one screen pixel per art pixel.
+    // Example: 16x32 into 30x44 at zoom 2: min(1.875, 1.375) * 2 = 2.75 -> 2 pixels -> scale 1.
+    float FitScale(int frameWidth, int frameHeight, float targetWidth, float targetHeight, float pixelsPerUnit = 1);
+
     // All imported rows, with lookups.
     //
     // Importing never throws. Bad rows are skipped and bad values fall back to defaults;

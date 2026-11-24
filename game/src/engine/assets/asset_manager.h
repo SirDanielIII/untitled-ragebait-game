@@ -88,6 +88,13 @@ namespace rage {
         DrawResult Draw(const AnimationData &animation, int frame, Vector2 position, Facing facing = Facing::None,
                         const PlaceholderDrawer &placeholder = {}, float scale = pixelScale, Color tint = WHITE) const;
 
+        // Draws a frame as large as possible inside `target` without stretching (aspect ratio kept).
+        // The pivot anchors to the same point of `target`: bottom-centre on the rectangle's bottom
+        // edge, top-left in its corner, centre in its middle. Missing art fills the same area.
+        // `pixelsPerUnit` is the camera zoom, so pixels stay crisp (see FitScale).
+        DrawResult DrawFitted(const AnimationData &animation, int frame, Rectangle target, Facing facing = Facing::None,
+                              float pixelsPerUnit = 1, const PlaceholderDrawer &placeholder = {}) const;
+
         // The default stand-in for missing art: a translucent box with a cross.
         // `directional` adds a notch on the side the object faces.
         static void DrawPlaceholderBox(Rectangle bounds, bool flipped, bool directional = false);
