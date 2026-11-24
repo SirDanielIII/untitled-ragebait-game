@@ -47,6 +47,18 @@ namespace rage {
         if (ownsFont) UnloadFont(uiFont);
         if (IsSoundValid(click)) UnloadSound(click);
         if (canvas.id != 0) UnloadRenderTexture(canvas);
+        if (upscale.id != 0) UnloadRenderTexture(upscale);
+    }
+
+    RenderTexture2D Resources::UpscaleTarget(int factor) {
+        if (factor == upscaleFactor) return upscale; // Reuse it; don't retry a size that failed.
+        if (upscale.id != 0) UnloadRenderTexture(upscale);
+        upscale = LoadRenderTexture(canvasWidth * factor, canvasHeight * factor);
+        upscaleFactor = factor;
+        if (upscale.id != 0) SetTextureFilter(upscale.texture, TEXTURE_FILTER_BILINEAR); // Smooth final shrink.
+        else TraceLog(LOG_WARNING, "Could not allocate a %dx%d upscale target; using smooth scaling",
+                      canvasWidth * factor, canvasHeight * factor);
+        return upscale;
     }
 
     void Resources::BeginClip(Rectangle bounds) const {

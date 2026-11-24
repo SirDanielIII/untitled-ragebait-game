@@ -173,6 +173,15 @@ namespace rage {
         return art != Facing::None && object != Facing::None && art != object;
     }
 
+    float FitScale(int frameWidth, int frameHeight, float targetWidth, float targetHeight, float pixelsPerUnit) {
+        if (frameWidth <= 0 || frameHeight <= 0 || pixelsPerUnit <= 0) return 1;
+        // The smaller ratio keeps the aspect ratio: grow until the first side touches the target.
+        const float fit = std::min(targetWidth / frameWidth, targetHeight / frameHeight);
+        // Round down to whole screen pixels so pixel art stays crisp, but never below one.
+        const float screenPixels = std::max(1.0f, std::floor(fit * pixelsPerUnit));
+        return screenPixels / pixelsPerUnit;
+    }
+
     void GameData::Clear() {
         animations.clear();
         assetAnimations.clear();

@@ -85,14 +85,44 @@ namespace rage {
         if (config.values.showFps) resources.DrawText(TextFormat("%d FPS", GetFPS()), {1410, 18}, 20, 1, RAYWHITE);
         EndTextureMode();
 
+        // Copy the canvas to the window so pixel art stays crisp at any window size
+        // (see ChoosePresentation in engine/graphics/layout.h).
+        const auto canvas = resources.Canvas();
+        const Rectangle destination = Destination();
+        const Presentation presentation = ChoosePresentation(destination.width * WindowPixelScale().x / canvasWidth);
+        // Render textures are stored upside down; a negative source height flips them back.
+        const Rectangle canvasSource{0, 0, static_cast<float>(canvas.texture.width), -static_cast<float>(canvas.texture.height)};
+        RenderTexture2D upscaled = {};
+        if (presentation.mode == PresentMode::SharpUpscale) upscaled = resources.UpscaleTarget(presentation.factor);
+        if (upscaled.id != 0) {
+            // Step 1: enlarge to a whole multiple with nearest-neighbour (every pixel stays square).
+            SetTextureFilter(canvas.texture, TEXTURE_FILTER_POINT);
+            BeginTextureMode(upscaled);
+            ClearBackground(BLANK);
+            BeginBlendMode(BLEND_ALPHA_PREMULTIPLY);
+            DrawTexturePro(canvas.texture, canvasSource,
+                           {0, 0, static_cast<float>(upscaled.texture.width), static_cast<float>(upscaled.texture.height)},
+                           {0, 0}, 0, WHITE);
+            EndBlendMode();
+            EndTextureMode();
+        } else {
+            SetTextureFilter(canvas.texture,
+                             presentation.mode == PresentMode::Exact ? TEXTURE_FILTER_POINT : TEXTURE_FILTER_BILINEAR);
+        }
+
         BeginDrawing();
         ClearBackground(BLACK);
-        const auto canvas = resources.Canvas();
         // RGB has already been composited into the canvas. Preserve those colors;
         // applying glyph-edge alpha a second time would darken the text.
         BeginBlendMode(BLEND_ALPHA_PREMULTIPLY);
-        DrawTexturePro(canvas.texture, {0, 0, static_cast<float>(canvas.texture.width), -static_cast<float>(canvas.texture.height)},
-                       Destination(), {0, 0}, 0, WHITE);
+        if (upscaled.id != 0) {
+            // Step 2: shrink the enlarged copy to the window with smooth (bilinear) filtering.
+            DrawTexturePro(upscaled.texture,
+                           {0, 0, static_cast<float>(upscaled.texture.width), -static_cast<float>(upscaled.texture.height)},
+                           destination, {0, 0}, 0, WHITE);
+        } else {
+            DrawTexturePro(canvas.texture, canvasSource, destination, {0, 0}, 0, WHITE);
+        }
         EndBlendMode();
         EndDrawing();
     }

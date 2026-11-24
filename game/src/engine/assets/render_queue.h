@@ -40,6 +40,16 @@ namespace rage {
             });
         }
 
+        // Like Submit, but best-fits the sprite inside `target` without stretching (see
+        // AssetManager::DrawFitted). In a level, pass Camera().zoom as `pixelsPerUnit`.
+        void SubmitFitted(const AssetManager &assets, const AnimationData &animation, int frame, Rectangle target,
+                          Facing facing = Facing::None, float pixelsPerUnit = 1, PlaceholderDrawer placeholder = {}) {
+            Submit(animation.layer, [&assets, &animation, frame, target, facing, pixelsPerUnit,
+                                     placeholder = std::move(placeholder)] {
+                assets.DrawFitted(animation, frame, target, facing, pixelsPerUnit, placeholder);
+            });
+        }
+
         // Runs every job, Background first and UI last, then empties the queue.
         void Flush() {
             for (auto &layer: layers) {

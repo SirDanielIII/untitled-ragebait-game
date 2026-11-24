@@ -101,6 +101,10 @@ The player uses Asset ID `player_character` and the states `idle`, `walk`, `jump
 
 Sprite size does not change collision. The player's collision box stays 30 × 44 pixels, and its bottom-centre is the sprite's pivot.
 
+### How sprites are scaled
+
+Every sprite is scaled uniformly, never stretched, with nearest-neighbour filtering so pixels stay sharp. Artists export PNGs at 100%: the game draws each PNG pixel as `pixelScale` (2) world pixels, and the level camera's zoom (2) makes each art pixel 4×4 on screen. A sprite can also be best-fitted inside a rectangle; it then grows as large as fits without changing shape, rounded down to whole pixels. The camera and player are snapped to whole pixels while scrolling, and the window is scaled so pixel art stays crisp at any window size. Details and code: [game/src/engine/assets/README.md](../game/src/engine/assets/README.md#how-sprites-are-scaled).
+
 ### Updating assets
 
 1. Edit the Game Data sheet (and the art in the Assets folder).

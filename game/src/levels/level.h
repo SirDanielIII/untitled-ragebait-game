@@ -100,6 +100,11 @@ namespace rage {
         // Returns 0 if busy. Use CanSay in polling event conditions to retry.
         DialogueMessageId Say(DialogueCue cue, DialoguePolicy policy = DialoguePolicy::WhenAvailable);
 
+        // Rounds a drawing position to the nearest canvas pixel, so sprites and the camera
+        // never sit between pixels (which makes pixel art shimmer while scrolling).
+        // Use it only for drawing; gameplay positions stay exact.
+        Vector2 SnapToPixels(Vector2 point) const;
+
         virtual void OnReset() {
         }
 

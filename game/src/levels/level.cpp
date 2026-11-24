@@ -10,7 +10,7 @@
 namespace rage {
     Level::Level(const LevelDefinition &definition) : definition(definition) {
         camera.offset = {worldViewport.width / 2, worldViewport.y + worldViewport.height / 2};
-        camera.zoom = 1.5f;
+        camera.zoom = 2.0f;
         // Objects are initialised when the level loads, from its
         // definitions. Leaving a level destroys the Level (and this
         // manager with it), so no object can outlive its level.
@@ -225,9 +225,13 @@ namespace rage {
             queue.Submit(Layer::Middle, [&resources, body] { art::Student(resources, body); });
             return;
         }
-        const Vector2 feet{body.x + body.width / 2, body.y + body.height};
+        const Vector2 feet = SnapToPixels({body.x + body.width / 2, body.y + body.height});
         queue.Submit(assets, *animation, playerAnimator.Frame(*animation), feet, playerFacing,
                      [&resources](Rectangle bounds, bool) { art::Student(resources, bounds); });
+    }
+
+    Vector2 Level::SnapToPixels(Vector2 point) const {
+        return {std::round(point.x * camera.zoom) / camera.zoom, std::round(point.y * camera.zoom) / camera.zoom};
     }
 
     void Level::UpdateCamera() {
@@ -237,10 +241,10 @@ namespace rage {
             if (length <= halfView * 2) return start + length / 2;
             return std::clamp(target, start + halfView, start + length - halfView);
         };
-        camera.target = {
+        camera.target = SnapToPixels({
             follow(position.x + 15, world.x, world.width, worldViewport.width / (2 * camera.zoom)),
             follow(position.y + 22, world.y, world.height, worldViewport.height / (2 * camera.zoom))
-        };
+        });
     }
 
     void Level::Draw(const Resources &resources) const {
