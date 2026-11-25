@@ -11,6 +11,8 @@ void TestLevelAuthoring();
 void TestEventManager();
 void TestGameData();
 void TestAssetRendering();
+void TestAudioData();
+void TestAudioPlayback();
 void TestObjects();
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
 void TestWindowResize(void* handle);
@@ -344,6 +346,7 @@ int RunSelfTests()
         TestLevelAuthoring();
         TestEventManager();
         TestGameData();
+        TestAudioData();
         TestObjects();
         std::cout << "All foundation self-tests passed (no window/audio context required).\n";
         return 0;
@@ -393,6 +396,7 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     }
     std::cout << "PASS: custom font, missing-font fallback and optional texture replacement\n";
     TestAssetRendering();
+    TestAudioPlayback();
     auto click = [&](ActionKind kind, int value = 0) { Frame(0, ClickAction(game, kind, value)); };
     auto capture = [&](const std::string& name, bool screen = false)
     {

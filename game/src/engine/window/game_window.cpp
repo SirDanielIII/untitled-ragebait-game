@@ -62,7 +62,14 @@ namespace rage {
         const bool menuAction = game.Update(delta, input);
         if (!smokeTest && previousFps != config.values.EffectiveTargetFps()) SetTargetFPS(config.values.EffectiveTargetFps());
         if (IsAudioDeviceReady()) SetMasterVolume(config.values.muted ? 0.0f : config.values.masterVolume);
+        // Audio: volumes, pause ducking, the screen's music, then the sounds requested this frame.
+        auto &audio = resources.Audio();
+        audio.SetVolumes(config.values.musicVolume, config.values.sfxVolume);
+        audio.SetPaused(game.IsLevelPaused()); // Before the click, so pausing doesn't cut its own click.
+        audio.PlayMusic(game.MusicTrack());
+        for (const auto &soundId: game.TakeSoundRequests()) audio.Play(soundId);
         if (menuAction) resources.PlayClick(config.values);
+        audio.Update(delta);
         if (game.TakeSettingsDirty() && !smokeTest) {
             preferencesPending = true;
             settingsStatus = "Changes apply now; drag changes save on release.";

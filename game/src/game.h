@@ -4,6 +4,8 @@
 #include "levels/level.h"
 #include "ui/menu/menu.h"
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace rage {
     enum class ScreenId { MainMenu, LevelSelect, Settings, Playing, Paused };
@@ -23,6 +25,14 @@ namespace rage {
         bool WantsQuit() const { return quit; }
 
         bool TakeSettingsDirty();
+
+        // Sound IDs the active level requested since the last call (none outside a level).
+        std::vector<std::string> TakeSoundRequests();
+        // Music for the current screen: the level's track while a level is loaded, otherwise
+        // the menu theme. GameWindow passes it to AudioManager::PlayMusic every frame.
+        std::string MusicTrack() const;
+        // True while a level is loaded but not being played (paused, or Settings from pause).
+        bool IsLevelPaused() const { return activeLevel && screen != ScreenId::Playing; }
 
     private:
         void Enter(ScreenId next);

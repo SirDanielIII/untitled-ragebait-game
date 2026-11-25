@@ -12,7 +12,8 @@
 namespace rage {
     enum class ActionKind {
         StartLevel, OpenLevels, OpenSettings, Back, MainMenu, Quit, Resume, Restart,
-        ToggleFps, ToggleMute, ToggleUnlimitedFps, SetTargetFps, SetVolume, SetDialogueSpeed
+        ToggleFps, ToggleMute, ToggleUnlimitedFps, SetTargetFps, SetVolume, SetMusicVolume, SetSfxVolume,
+        SetDialogueSpeed
     };
 
     struct Action {

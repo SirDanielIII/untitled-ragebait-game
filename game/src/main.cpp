@@ -106,7 +106,8 @@ namespace rage {
         if (!action) return false;
         Apply(*action);
         // Continuous slider changes are silent; ordinary button actions play one click.
-        return action->kind != ActionKind::SetVolume && action->kind != ActionKind::SetDialogueSpeed
+        return action->kind != ActionKind::SetVolume && action->kind != ActionKind::SetMusicVolume
+               && action->kind != ActionKind::SetSfxVolume && action->kind != ActionKind::SetDialogueSpeed
                && action->kind != ActionKind::SetTargetFps;
     }
 
@@ -148,6 +149,14 @@ namespace rage {
                 config.masterVolume = std::clamp(action.scalar, 0.0f, 1.0f);
                 settingsDirty = true;
                 return; // Retain the widget's drag capture and keyboard focus.
+            case ActionKind::SetMusicVolume:
+                config.musicVolume = std::clamp(action.scalar, 0.0f, 1.0f);
+                settingsDirty = true;
+                return;
+            case ActionKind::SetSfxVolume:
+                config.sfxVolume = std::clamp(action.scalar, 0.0f, 1.0f);
+                settingsDirty = true;
+                return;
             case ActionKind::SetDialogueSpeed:
                 config.charactersPerSecond = std::clamp(action.scalar, 0.0f, 240.0f);
                 settingsDirty = true;
@@ -155,6 +164,14 @@ namespace rage {
         }
         settingsDirty = true;
         BuildMenu(true);
+    }
+
+    std::vector<std::string> Game::TakeSoundRequests() {
+        return activeLevel ? activeLevel->TakeSoundRequests() : std::vector<std::string>{};
+    }
+
+    std::string Game::MusicTrack() const {
+        return activeLevel ? activeLevel->MusicTrack() : std::string(menuMusic);
     }
 
     bool Game::TakeSettingsDirty() {

@@ -28,7 +28,7 @@ game/
     player/           Movement and collisions
     levels/           Shared Level class + level_0/ through level_3/
     ui/               Feature folders: menus, menu, slider, dialogue, text
-    engine/           Feature folders: window, config, input, resources, graphics, assets
+    engine/           Feature folders: window, config, input, resources, graphics, assets, audio, data
   resources/          Runtime fonts, exported images, audio and defaults
   tests/              Gameplay and rendering checks
   projects/VSCode/    VS Code workspace

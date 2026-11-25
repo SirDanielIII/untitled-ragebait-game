@@ -1,0 +1,11 @@
+Sound ID,File Name,Category,Volume,Loops,Variants,Notes
+ui_click,click.wav,UI,1,,,Menu button click
+player_jump,,SFX,1,,,Player leaves the ground
+player_land,,SFX,1,,,Player lands
+player_hurt,,SFX,1,,,Player takes damage
+player_death,,SFX,1,,,Player dies or hits a hazard
+menu_theme,,Music,0.8,Yes,,Main menu and settings
+level_0_theme,,Music,0.8,Yes,,Level 0
+level_1_theme,,Music,0.8,Yes,,Level 1
+level_2_theme,,Music,0.8,Yes,,Level 2
+level_3_theme,,Music,0.8,Yes,,Level 3

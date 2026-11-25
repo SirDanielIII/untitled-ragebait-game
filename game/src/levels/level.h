@@ -18,6 +18,14 @@ namespace rage {
     // (e.g. player_walk); see docs/ART_ASSETS.md.
     inline constexpr const char *playerAssetId = "player_character";
 
+    // Audio Data Sound IDs the level requests when the player's state changes.
+    namespace playerSounds {
+        inline constexpr const char *jump = "player_jump";
+        inline constexpr const char *land = "player_land";
+        inline constexpr const char *hurt = "player_hurt";
+        inline constexpr const char *death = "player_death";
+    }
+
     // Explicit values keep existing saved settings compatible.
     enum class LevelId { Level0 = 0, Level1 = 1, Level2 = 2, Level3 = 3 };
 
@@ -84,6 +92,14 @@ namespace rage {
         bool IsComplete() const { return levelComplete; }
         Vector2 RespawnPoint() const { return respawnPoint; }
 
+        // Sound IDs requested since the last call, oldest first. The level never plays audio
+        // itself: GameWindow takes these each frame and plays them (see engine/audio/README.md).
+        std::vector<std::string> TakeSoundRequests();
+
+        // This level's music: "level_<number>_theme" (an Audio Data Sound ID) unless a level
+        // overrides it. Return "" for silence.
+        virtual std::string MusicTrack() const;
+
     protected:
         EventManager &Events() { return events; }
         Player &MutablePlayer() { return player; }
@@ -99,6 +115,10 @@ namespace rage {
         bool CanSay() const;
         // Returns 0 if busy. Use CanSay in polling event conditions to retry.
         DialogueMessageId Say(DialogueCue cue, DialoguePolicy policy = DialoguePolicy::WhenAvailable);
+
+        // Asks for a sound to play this frame, for scripted moments in events or OnUpdate,
+        // e.g. RequestSound("level1_slide"). Player sounds are requested automatically.
+        void RequestSound(std::string soundId);
 
         // Rounds a drawing position to the nearest canvas pixel, so sprites and the camera
         // never sit between pixels (which makes pixel art shimmer while scrolling).
@@ -136,6 +156,9 @@ namespace rage {
 
         void UpdatePlayerAnimation(float dt);
 
+        // Requests jump/land/hurt/death sounds by comparing the player with the last frame.
+        void UpdatePlayerSounds(float dt);
+
         void SubmitPlayer(RenderQueue &queue, const Resources &resources) const;
 
         const LevelDefinition &definition;
@@ -155,6 +178,12 @@ namespace rage {
         ObjectManager objects;
         Vector2 respawnPoint{};
         bool levelComplete = false;
+        std::vector<std::string> soundRequests;
+        bool trackingPlayerSounds = false; // False until there is a previous frame to compare with.
+        bool wasGrounded = false;
+        int lastHealth = 0;
+        Vector2 lastPlayerPosition{};
+        float lastPlayerSpeed = 0;
     };
 
     // Level list and factories are implemented in main.cpp, beside the level handler.

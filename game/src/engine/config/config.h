@@ -16,6 +16,8 @@ namespace rage {
         bool showFps = false;
         float masterVolume = 0.5f;
         bool muted = false;
+        float musicVolume = 0.8f; // Music slider; multiplied by the master volume.
+        float sfxVolume = 1.0f;   // Sound effects, UI and voice slider.
         float moveSpeed = 260.0f;
         float jumpSpeed = 620.0f;
         float gravity = 1500.0f;
