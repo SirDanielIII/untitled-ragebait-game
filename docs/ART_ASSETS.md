@@ -124,6 +124,10 @@ assets.Draw(*walk, animator.Frame(*walk), feetPosition, Facing::Left);  // pivot
 
 Use an `Animator` (`engine/assets/animator.h`) per object for its current state and playback time, and a `RenderQueue` to draw in layer order. Levels queue their sprites in `SubmitSprites`; see [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md#layout).
 
+## Sounds and music
+
+Audio works the same way as Game Data sprites: an **Audio** tab in the Game Data workbook, exported to `game/resources/data/audio_data.csv`, with WAV sound effects in `game/resources/audio/sfx/` and OGG music in `game/resources/audio/music/`. See [game/src/engine/audio/README.md](../game/src/engine/audio/README.md).
+
 ## Runtime files
 
 `game/resources/` holds runtime fonts, exported images, defaults and audio. `game/CMakeLists.txt` stages this directory on every build of the game target using `cmake -E copy_directory`. Desktop builds copy it beside the executable. With `PLATFORM=Web`, it goes in `${CMAKE_BINARY_DIR}/resources` for Emscripten's `--preload-file resources` link option. Source files such as PSDs stay in the root `assets/` folder and are not copied.

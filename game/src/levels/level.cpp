@@ -28,6 +28,8 @@ namespace rage {
         objects.ResetAll();
         playerAnimator = {};
         playerAnimator.SetState("idle");
+        soundRequests.clear();
+        trackingPlayerSounds = false; // A restart is not a landing.
         playerFacing = Facing::Right;
         elapsedSeconds = 0;
         preferredTextSpeed = config.charactersPerSecond;
@@ -68,6 +70,7 @@ namespace rage {
         objects.UpdateAll(dt);
         player.Update(dt, input, config, objects.SolidBounds(), definition.world);
         UpdatePlayerAnimation(dt);
+        UpdatePlayerSounds(dt);
         CheckHazardsAndTriggers();
         OnUpdate(dt, input);
         events.Update();
@@ -126,7 +129,9 @@ namespace rage {
         for (auto *hazard : objects.Overlapping(playerBounds, CollisionType::Hazard)) {
             NotifyObject(*hazard, objectEvents::hazardHit);
             hazard->OnTrigger();
+            RequestSound(playerSounds::death);
             player.Reset(respawnPoint);
+            trackingPlayerSounds = false; // Appearing at the checkpoint is not a landing.
             return;
         }
         // Triggers fire on entry only: the object's triggered flag is
@@ -200,6 +205,45 @@ namespace rage {
             events.Notify({dialogueEvents::revealCompleted, currentCue.id, method});
             revealCompleted = true;
         }
+    }
+
+    void Level::RequestSound(std::string soundId) {
+        if (!soundId.empty()) soundRequests.push_back(std::move(soundId));
+    }
+
+    std::vector<std::string> Level::TakeSoundRequests() {
+        std::vector<std::string> requests;
+        requests.swap(soundRequests);
+        return requests;
+    }
+
+    std::string Level::MusicTrack() const {
+        return "level_" + std::to_string(static_cast<int>(definition.id)) + "_theme";
+    }
+
+    void Level::UpdatePlayerSounds(float dt) {
+        const bool grounded = player.Grounded();
+        const int health = player.GetHealth();
+        const Vector2 position = player.Position();
+        const Vector2 velocity = player.Velocity();
+        const float speed = std::max(std::abs(velocity.x), std::abs(velocity.y));
+        // Moved farther than its speed allows (plus room for collision push-outs): the player
+        // was put somewhere by a respawn or a script (checkpoints, Level 1's slide). That is
+        // not a jump or a landing, so this frame only records the new state.
+        const float reach = std::max(speed, lastPlayerSpeed) * dt + 24.0f;
+        const bool teleported = std::abs(position.x - lastPlayerPosition.x) > reach
+                                || std::abs(position.y - lastPlayerPosition.y) > reach;
+        if (trackingPlayerSounds && !teleported) {
+            // Leaving the ground while moving up is a jump; walking off a ledge is not.
+            if (wasGrounded && !grounded && player.Velocity().y < 0) RequestSound(playerSounds::jump);
+            else if (!wasGrounded && grounded) RequestSound(playerSounds::land);
+            if (health < lastHealth) RequestSound(player.IsDead() ? playerSounds::death : playerSounds::hurt);
+        }
+        trackingPlayerSounds = true;
+        wasGrounded = grounded;
+        lastHealth = health;
+        lastPlayerPosition = position;
+        lastPlayerSpeed = speed;
     }
 
     void Level::UpdatePlayerAnimation(float dt) {

@@ -24,6 +24,8 @@ The current game supports menus, settings, level selection, movement/collision, 
 | Choose fonts and fixed artwork slots | `game/src/engine/resources/asset_paths.h` |
 | Add sprites/animations (no code) | Game Data sheet, exported to `game/resources/data/game_data.csv` ([ART_ASSETS.md](ART_ASSETS.md#game-data-sprites-and-animations)) |
 | Change sprite loading, pivots, flipping or layers | `game/src/engine/assets/` |
+| Add sounds/music (no code) | Audio tab of Game Data, exported to `game/resources/data/audio_data.csv` ([guide](../game/src/engine/audio/README.md)) |
+| Change audio loading, playback, music or volumes | `game/src/engine/audio/` |
 | Change resource loading or window rendering | `game/src/engine/resources/resources.cpp`, `game/src/engine/window/game_window.cpp` |
 
 ## Source layout
@@ -65,6 +67,9 @@ game/
       assets/asset_manager.*    Game Data textures, pivots, flipping and placeholders
       assets/animator.h         Per-object animation state and playback time
       assets/render_queue.h     Background/Middle/Foreground/UI draw order
+      audio/audio_data.*        Audio Data CSV import and validation
+      audio/audio_manager.*     Sound effects, music streaming/crossfades, volumes and pause
+      data/csv.*                CSV helpers shared by Game Data and Audio Data
 ```
 
 Includes are relative to `game/src`, for example `#include "levels/level.h"`. `src/CMakeLists.txt` uses `GLOB_RECURSE` with `CONFIGURE_DEPENDS`: `.cpp`, `.h` and `.hpp` files under `src/` and `.cpp` tests under `tests/` are discovered recursively. Adding, removing or moving a source file triggers a refresh on the next build. Register new playable levels in `main.cpp` as described in the level guide.

@@ -1,6 +1,7 @@
 // Game Data import: turns the exported CSV into AnimationData rows, and the maths that
 // turns a row plus a time into "which part of the PNG to draw". See game_data.h.
 #include "engine/assets/game_data.h"
+#include "engine/data/csv.h"
 
 #include <algorithm>
 #include <array>
@@ -12,120 +13,31 @@
 #include <sstream>
 
 namespace rage {
-    // Helpers used only in this file (an unnamed namespace keeps them private to it).
+    // The CSV helpers (Trim, Key, Number...) live in engine/data/csv, shared with other importers.
     namespace {
-        // Removes spaces, tabs and line breaks from both ends of a cell.
-        std::string Trim(std::string_view text) {
-            const auto first = text.find_first_not_of(" \t\r\n");
-            if (first == std::string_view::npos) return {};
-            const auto last = text.find_last_not_of(" \t\r\n");
-            return std::string(text.substr(first, last - first + 1));
-        }
-
-        // Lowercase letters and digits only: "Frame Width (px)" -> "framewidthpx".
-        std::string Key(std::string_view text) {
-            std::string key;
-            for (const char c: text) {
-                const auto u = static_cast<unsigned char>(c);
-                if (std::isalnum(u)) key += static_cast<char>(std::tolower(u));
-            }
-            return key;
-        }
-
-        // Text to number, or std::nullopt ("no value") when the cell is not a valid number.
-        // The whole cell must be numeric: "12" works, "12fps" and "fast" do not.
-        std::optional<double> Number(const std::string &text) {
-            if (text.empty()) return std::nullopt;
-            char *end = nullptr;
-            const double value = std::strtod(text.c_str(), &end);
-            if (end != text.c_str() + text.size() || !std::isfinite(value)) return std::nullopt;
-            return value;
-        }
-
-        // Like Number, but the value must be a whole number ("48" or "48.0", not "48.5").
-        std::optional<int> Integer(const std::string &text) {
-            const auto value = Number(text);
-            if (!value || *value != std::floor(*value) || std::abs(*value) > 1'000'000) return std::nullopt;
-            return static_cast<int>(*value);
-        }
-
-        // The team's ID rule: lowercase letters, digits and underscores (player_walk).
-        bool IsIdentifier(std::string_view id) {
-            return !id.empty() && std::all_of(id.begin(), id.end(), [](char c) {
-                return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
-            });
-        }
+        using csv::Integer;
+        using csv::IsIdentifier;
+        using csv::Key;
+        using csv::Number;
+        using csv::Trim;
 
         // The sheet's columns, A to M. A plain enum so each name doubles as an array index.
         enum Column { AnimationId, AssetId, FileName, FrameWidth, FrameHeight, Frames, FramesPerRow, Fps, Loops,
             PivotColumn, Faces, LayerColumn, Notes, ColumnCount };
 
-        // Sheet header text, in the documented column order (A-M).
-        constexpr std::array<const char *, ColumnCount> headers = {
-            "Animation ID", "Asset ID", "File Name", "Frame Width (px)", "Frame Height (px)", "Frames",
-            "Frames per Row", "FPS", "Loops", "Pivot", "Faces", "Layer", "Notes"
-        };
-
-        // Does a header cell (already passed through Key) name this column?
-        bool Matches(Column column, const std::string &key) {
-            if (key == Key(headers[column])) return true;
-            if (column == FrameWidth) return key == "framewidth";
-            if (column == FrameHeight) return key == "frameheight";
-            return false;
-        }
-
-        // Is this header any of our column names? Used before guessing a column by position.
-        bool IsKnownHeader(const std::string &key) {
-            for (int c = 0; c < ColumnCount; ++c) if (Matches(static_cast<Column>(c), key)) return true;
-            return false;
+        // Sheet header text, in the documented column order (A-M), with accepted alternatives.
+        const std::vector<csv::ColumnName> &Columns() {
+            static const std::vector<csv::ColumnName> columns = {
+                {"Animation ID"}, {"Asset ID"}, {"File Name"}, {"Frame Width (px)", {"Frame Width"}},
+                {"Frame Height (px)", {"Frame Height"}}, {"Frames"}, {"Frames per Row"}, {"FPS"}, {"Loops"},
+                {"Pivot"}, {"Faces"}, {"Layer"}, {"Notes"}
+            };
+            return columns;
         }
     }
 
-    // Reads the text one character at a time. Outside quotes, a comma ends a cell and a
-    // line break ends a row. Inside quotes, everything is literal except "" (an escaped ").
-    std::vector<std::vector<std::string>> ParseCsv(std::string_view text) {
-        // Skip the invisible UTF-8 "byte-order mark" some programs put at the start of a file.
-        if (text.size() >= 3 && text.substr(0, 3) == "\xEF\xBB\xBF") text.remove_prefix(3);
-        std::vector<std::vector<std::string>> rows;
-        std::vector<std::string> row;
-        std::string cell;
-        bool quoted = false;
-        bool rowHasContent = false;
-        for (std::size_t i = 0; i < text.size(); ++i) {
-            const char c = text[i];
-            if (quoted) {
-                if (c == '"' && i + 1 < text.size() && text[i + 1] == '"') {
-                    cell += '"';
-                    ++i;
-                } else if (c == '"') quoted = false;
-                else cell += c;
-            } else if (c == '"') {
-                quoted = true;
-                rowHasContent = true;
-            } else if (c == ',') {
-                row.push_back(std::move(cell));
-                cell.clear();
-                rowHasContent = true;
-            } else if (c == '\n' || c == '\r') {
-                // Treat \r\n (Windows) as a single line break.
-                if (c == '\r' && i + 1 < text.size() && text[i + 1] == '\n') ++i;
-                row.push_back(std::move(cell));
-                cell.clear();
-                rows.push_back(std::move(row));
-                row.clear();
-                rowHasContent = false;
-            } else {
-                cell += c;
-                rowHasContent = true;
-            }
-        }
-        // The last row may not end with a line break.
-        if (rowHasContent || !cell.empty()) {
-            row.push_back(std::move(cell));
-            rows.push_back(std::move(row));
-        }
-        return rows;
-    }
+    // Kept for existing callers; the parser itself is csv::Parse.
+    std::vector<std::vector<std::string>> ParseCsv(std::string_view text) { return csv::Parse(text); }
 
     // Example: 6 frames, 3 per row, 32x32 each. Frame 4 is column 4 % 3 = 1, row 4 / 3 = 1,
     // so it starts at (32, 32).
@@ -197,25 +109,21 @@ namespace rage {
     bool GameData::LoadFile(const std::filesystem::path &path) {
         Clear();
         source = path.filename().string();
-        std::ifstream file(path, std::ios::binary);
-        if (!file) {
+        const auto text = csv::ReadFile(path);
+        if (!text) {
             Report("file not found at " + path.string() + "; no Game Data animations are available");
             return false;
         }
-        std::ostringstream text;
-        text << file.rdbuf();
-        return Parse(text.str(), source);
+        return Parse(*text, source);
     }
 
     // Import in three steps: find the header row, work out which column is which, then
     // check and store each data row. Nothing here throws; problems go to Report().
-    bool GameData::Parse(std::string_view csv, std::string_view sourceName) {
+    bool GameData::Parse(std::string_view csvText, std::string_view sourceName) {
         Clear();
         source = std::string(sourceName);
-        const auto rows = ParseCsv(csv);
-        const auto blank = [](const std::vector<std::string> &row) {
-            return std::all_of(row.begin(), row.end(), [](const std::string &cell) { return Trim(cell).empty(); });
-        };
+        const auto rows = csv::Parse(csvText);
+        const auto blank = csv::IsBlank;
         // Step 1: the header is the first row that is not blank.
         std::size_t headerRow = 0;
         while (headerRow < rows.size() && blank(rows[headerRow])) ++headerRow;
@@ -229,28 +137,18 @@ namespace rage {
         // of "FPS"), fall back to the documented position, as long as that cell is not
         // some other known header. index[column] = cell position, or -1 if missing.
         const auto &header = rows[headerRow];
-        std::array<int, ColumnCount> index{};
-        for (int c = 0; c < ColumnCount; ++c) {
-            index[c] = -1;
-            for (std::size_t i = 0; i < header.size(); ++i) {
-                if (Matches(static_cast<Column>(c), Key(header[i]))) {
-                    index[c] = static_cast<int>(i);
-                    break;
-                }
-            }
-            if (index[c] >= 0 || c >= static_cast<int>(header.size())) continue;
-            if (!IsKnownHeader(Key(header[c]))) {
-                index[c] = c;
-                if (c != Notes) {
-                    Report("column " + std::string(1, static_cast<char>('A' + c)) + " header is \"" + Trim(header[c])
-                           + "\" but should be \"" + headers[c] + "\"; reading it as " + headers[c]);
-                }
-            }
+        const auto &columns = Columns();
+        const csv::ColumnMap map = csv::MapColumns(header, columns);
+        const std::vector<int> &index = map.index;
+        for (const int c: map.renamed) {
+            if (c == Notes) continue; // Notes is never read by the game; no need to warn.
+            Report("column " + csv::ColumnLetter(c) + " header is \"" + Trim(header[c]) + "\" but should be \""
+                   + columns[c].header + "\"; reading it as " + columns[c].header);
         }
         // Without these four columns no row can be used, even as a placeholder.
         for (const Column required: {AnimationId, AssetId, FrameWidth, FrameHeight}) {
             if (index[required] < 0) {
-                Report(std::string("missing required column \"") + headers[required] + "\"; nothing was imported");
+                Report(std::string("missing required column \"") + columns[required].header + "\"; nothing was imported");
                 return false;
             }
         }

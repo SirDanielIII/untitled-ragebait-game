@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/assets/asset_manager.h"
+#include "engine/audio/audio_manager.h"
 #include "engine/config/config.h"
 #include "engine/graphics/layout.h"
 #include "raylib.h"
@@ -37,7 +38,12 @@ namespace rage {
         // first needed and recreated only when the factor changes. id is 0 if it could not be made.
         RenderTexture2D UpscaleTarget(int factor);
 
-        void PlayClick(const GameConfig &config) const;
+        // Sound effects and music described by data/audio_data.csv.
+        AudioManager &Audio() { return audio; }
+        const AudioManager &Audio() const { return audio; }
+
+        // Plays the menu click (the "ui_click" Sound ID) unless audio is muted.
+        void PlayClick(const GameConfig &config);
 
         void BeginClip(Rectangle logicalBounds) const;
 
@@ -49,10 +55,10 @@ namespace rage {
         RenderTexture2D canvas = {};
         RenderTexture2D upscale = {};
         int upscaleFactor = 0; // Factor `upscale` was made for (also remembered after a failure).
-        Sound click = {};
         Font uiFont = {};
         bool ownsFont = false;
         std::array<Texture2D, static_cast<std::size_t>(ArtId::Count)> artwork = {};
         AssetManager assets;
+        AudioManager audio; // Unloaded with Resources, before the audio device closes.
     };
 }

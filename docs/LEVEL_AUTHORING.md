@@ -120,6 +120,8 @@ void OnUpdate(float dt, const InputFrame& input) override
 | `ElapsedSeconds()` | Read time since the stage was reset |
 | `CanSay()` | Check whether a dialogue request can start this frame |
 | `Say(DialogueCue)` | Start a message and return its level-local request ID, or zero if busy |
+| `RequestSound(id)` | Play an Audio Data sound this frame (scripted moments). Player jump/land/hurt/death sounds are automatic |
+| `MusicTrack()` | Override to choose the level's music (default `level_<number>_theme`); changes crossfade. See [audio README](../game/src/engine/audio/README.md) |
 | `Events()` | Register events, post notifications and query completion |
 | `Objects()` | The level's `ObjectManager`: look objects up by id, spawn / remove / activate / deactivate them, start a fall |
 | `ActivateObject(id)` / `DeactivateObject(id)` / `StartObjectFall(id)` | Event-facing object actions; they also post `objectEvents::activated` |

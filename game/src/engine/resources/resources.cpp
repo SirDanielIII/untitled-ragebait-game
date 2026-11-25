@@ -38,14 +38,12 @@ namespace rage {
             if (FileExists(path.string().c_str())) artwork[i] = LoadTexture(path.string().c_str());
         }
         assets.Load(directory);
-        const auto clickPath = directory / "coin.wav";
-        if (IsAudioDeviceReady() && FileExists(clickPath.string().c_str())) click = LoadSound(clickPath.string().c_str());
+        audio.Load(directory);
     }
 
     Resources::~Resources() {
         for (const auto texture: artwork) if (IsTextureValid(texture)) UnloadTexture(texture);
         if (ownsFont) UnloadFont(uiFont);
-        if (IsSoundValid(click)) UnloadSound(click);
         if (canvas.id != 0) UnloadRenderTexture(canvas);
         if (upscale.id != 0) UnloadRenderTexture(upscale);
     }
@@ -92,9 +90,8 @@ namespace rage {
         return true;
     }
 
-    void Resources::PlayClick(const GameConfig &config) const {
-        if (!IsSoundValid(click) || config.muted) return;
-        SetSoundVolume(click, 1.0f); // Global master volume is applied by GameWindow each frame.
-        PlaySound(click);
+    void Resources::PlayClick(const GameConfig &config) {
+        if (config.muted) return;
+        audio.Play(uiClickSound); // Master volume is applied globally by GameWindow each frame.
     }
 }

@@ -9,6 +9,8 @@ window:
 audio:
   master_volume: 0.5
   muted: false
+  music_volume: 0.8 # Multiplied by master_volume.
+  sfx_volume: 1
 player:
   move_speed: 260
   jump_speed: 620

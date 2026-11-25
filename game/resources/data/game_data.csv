@@ -1,2 +1,2 @@
-Animation ID,Asset ID,File Name,Frame Width (px),Frame Height (px),Frames,Frames per Row,bottom-centre,Loops,Pivot,Faces,Layer,Notes
+Animation ID,Asset ID,File Name,Frame Width (px),Frame Height (px),Frames,Frames per Row,FPS,Loops,Pivot,Faces,Layer,Notes
 player_idle,player_character,male_character.png,16,32,1,,,,bottom-centre,,Middle,test sprite

@@ -94,6 +94,8 @@ namespace rage {
             else if (fullKey == "window.show_fps") accepted = Boolean(value, values.showFps);
             else if (fullKey == "audio.master_volume") accepted = Number(value, values.masterVolume, 0.0f, 1.0f);
             else if (fullKey == "audio.muted") accepted = Boolean(value, values.muted);
+            else if (fullKey == "audio.music_volume") accepted = Number(value, values.musicVolume, 0.0f, 1.0f);
+            else if (fullKey == "audio.sfx_volume") accepted = Number(value, values.sfxVolume, 0.0f, 1.0f);
             else if (fullKey == "player.move_speed") accepted = Number(value, values.moveSpeed, 50.0f, 800.0f);
             else if (fullKey == "player.jump_speed") accepted = Number(value, values.jumpSpeed, 100.0f, 1200.0f);
             else if (fullKey == "player.gravity") accepted = Number(value, values.gravity, 200.0f, 4000.0f);
@@ -123,6 +125,7 @@ namespace rage {
                 << "\n  target_fps: " << values.targetFps << "\n  unlimited_fps: " << (values.unlimitedFps ? "true" : "false")
                 << "\n  show_fps: " << (values.showFps ? "true" : "false")
                 << "\naudio:\n  master_volume: " << values.masterVolume << "\n  muted: " << (values.muted ? "true" : "false")
+                << "\n  music_volume: " << values.musicVolume << "\n  sfx_volume: " << values.sfxVolume
                 << "\nplayer:\n  move_speed: " << values.moveSpeed << "\n  jump_speed: " << values.jumpSpeed << "\n  gravity: " << values.gravity
                 << "\ndialogue:\n  characters_per_second: " << values.charactersPerSecond
                 << "\nsession:\n  last_level: " << values.lastLevel << '\n';
