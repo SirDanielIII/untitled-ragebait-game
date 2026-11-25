@@ -77,7 +77,8 @@ namespace rage {
 
         void Update(float dt, const InputFrame &input, const GameConfig &config);
 
-        void Draw(const Resources &resources) const;
+        void Draw(const Resources &resources, const GameConfig &config) const;
+        void DrawStaminaBar(const Resources &resources, const GameConfig &config) const;
 
         const LevelDefinition &Definition() const { return definition; }
         const Player &GetPlayer() const { return player; }

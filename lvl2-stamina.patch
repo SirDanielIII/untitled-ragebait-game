@@ -1,0 +1,405 @@
+From cdcc4fe0f786b3e063e6ddc154c3c5cf923b5829 Mon Sep 17 00:00:00 2001
+From: Kavin Arasu <21kla5@queensu.ca>
+Date: Wed, 25 Nov 2026 07:25:05 -0500
+Subject: [PATCH] Resolve Level 2 climbing and stamina bar PR onto current
+ master
+
+Rebase of PR #12 (lvl2working) onto 3993066. The PR was based on
+2650cb9, before the AssetManager, EventManager, GameObject system,
+player health/movement, sprite scaling and audio PRs landed, so a
+plain merge conflicts in level.cpp, level_2.cpp, player.cpp and
+player.h and would revert those systems.
+
+Climbing and stamina are integrated into the current player
+movement instead: holding W/UP beside a platform latches on and
+climbs at climbSpeed, horizontal movement is disabled while
+climbing, jumping needs stamina, and stamina regenerates on the
+ground, drains while climbing, and drains while airborne. The
+stamina bar is drawn above the player in Level::Draw, which now
+takes the GameConfig; both call sites in main.cpp pass it. Level 2
+is rebuilt as objects (5 climbable pillars, 20 ledges, floor) with
+the PR's taller world, instead of the old stair layout.
+
+Adds a self-test for climbing, stamina drain, ground regen and
+reset.
+---
+ game/src/engine/config/config.h     |  5 +++
+ game/src/engine/input/input.h       |  2 +
+ game/src/levels/level.cpp           | 29 ++++++++++++-
+ game/src/levels/level.h             |  3 +-
+ game/src/levels/level_2/level_2.cpp | 46 ++++++++++++++------
+ game/src/main.cpp                   |  4 +-
+ game/src/player/player.cpp          | 66 ++++++++++++++++++++++++++---
+ game/src/player/player.h            |  5 +++
+ game/tests/foundation_tests.cpp     | 30 +++++++++++++
+ 9 files changed, 168 insertions(+), 22 deletions(-)
+
+diff --git a/game/src/engine/config/config.h b/game/src/engine/config/config.h
+index c23a0ec..a238f3e 100644
+--- a/game/src/engine/config/config.h
++++ b/game/src/engine/config/config.h
+@@ -21,7 +21,12 @@ namespace rage {
+         float moveSpeed = 260.0f;
+         float jumpSpeed = 620.0f;
+         float gravity = 1500.0f;
++        float climbSpeed = 180.0f;
+         float charactersPerSecond = 40.0f;
++        float maxStamina = 100.0f;
++        float climbStaminaDrain = 30.0f;
++        float jumpStaminaDrain = 20.0f;
++        float staminaRegen = 40.0f;
+         int lastLevel = 0;
+         int EffectiveTargetFps() const { return unlimitedFps ? 0 : targetFps; }
+     };
+diff --git a/game/src/engine/input/input.h b/game/src/engine/input/input.h
+index e89f99f..a503f81 100644
+--- a/game/src/engine/input/input.h
++++ b/game/src/engine/input/input.h
+@@ -16,6 +16,7 @@ namespace rage {
+         bool increase = false;
+         bool minimum = false;
+         bool maximum = false;
++        bool climb = false;
+         bool completeDialogue = false;
+         bool replayDialogue = false;
+         bool resetPlayer = false;
+@@ -35,6 +36,7 @@ namespace rage {
+         input.back = IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE);
+         input.confirm = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER);
+         input.up = IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W);
++        input.climb = IsKeyDown(KEY_W) || IsKeyDown(KEY_UP);
+         input.down = IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S) || IsKeyPressed(KEY_TAB);
+         input.decrease = IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A);
+         input.increase = IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D);
+diff --git a/game/src/levels/level.cpp b/game/src/levels/level.cpp
+index f366f8c..51dbc7c 100644
+--- a/game/src/levels/level.cpp
++++ b/game/src/levels/level.cpp
+@@ -291,7 +291,7 @@ namespace rage {
+         });
+     }
+ 
+-    void Level::Draw(const Resources &resources) const {
++    void Level::Draw(const Resources &resources, const GameConfig &config) const {
+         resources.BeginClip(worldViewport);
+         DrawRectangleRec(worldViewport, Color{36, 44, 60, 255});
+         BeginMode2D(camera);
+@@ -304,13 +304,38 @@ namespace rage {
+         });
+         SubmitSprites(queue, resources);
+         SubmitPlayer(queue, resources);
++        // Drawn here, inside the camera transform, so the bar sits in
++        // world space above the player like the PR's version did.
++        DrawStaminaBar(resources, config);
+         queue.Flush();
+         EndMode2D();
+         EndScissorMode();
+         DrawTextFit(resources, definition.title, {40, 26, 1380, 44}, 36, definition.accent);
+-        DrawTextFit(resources, "A/D: move   Space: jump   Esc: pause   R: restart", {40, 88, 1480, 30}, 24, RAYWHITE);
++        DrawTextFit(resources, "A/D: move   Space: jump   W/UP: climb   Esc: pause   R: restart", {40, 88, 1480, 30}, 24, RAYWHITE);
+         dialogue.Draw(resources, {40, 714, 1520, 162}, currentCue.speaker.c_str(), currentCue.fontSize,
+                       currentCue.allowSkip, currentCue.allowReplay);
+         DrawTextFit(resources, definition.description, {40, 678, 1500, 28}, 22, Color{173, 165, 190, 255});
+     }
++
++    void Level::DrawStaminaBar(const Resources &resources, const GameConfig &config) const {
++        // Stamina bar above the player: green above 60%, yellow above
++        // 30%, red below that, on a dark background.
++        (void)resources;
++        const Rectangle playerBounds = player.Bounds();
++        const float barWidth = 40.0f;
++        const float barHeight = 6.0f;
++        const float barX = playerBounds.x + (playerBounds.width - barWidth) / 2.0f;
++        const float barY = playerBounds.y - 12.0f;
++        const float staminaPercent = player.StaminaPercent(config.maxStamina);
++        Color staminaColor = GREEN;
++        if (staminaPercent < 0.3f) {
++            staminaColor = RED;
++        } else if (staminaPercent < 0.6f) {
++            staminaColor = YELLOW;
++        }
++        DrawRectangle(static_cast<int>(barX), static_cast<int>(barY), static_cast<int>(barWidth),
++                      static_cast<int>(barHeight), DARKGRAY);
++        DrawRectangle(static_cast<int>(barX), static_cast<int>(barY),
++                      static_cast<int>(barWidth * staminaPercent), static_cast<int>(barHeight), staminaColor);
++    }
+ }
+diff --git a/game/src/levels/level.h b/game/src/levels/level.h
+index cd8f866..72a775c 100644
+--- a/game/src/levels/level.h
++++ b/game/src/levels/level.h
+@@ -77,7 +77,8 @@ namespace rage {
+ 
+         void Update(float dt, const InputFrame &input, const GameConfig &config);
+ 
+-        void Draw(const Resources &resources) const;
++        void Draw(const Resources &resources, const GameConfig &config) const;
++        void DrawStaminaBar(const Resources &resources, const GameConfig &config) const;
+ 
+         const LevelDefinition &Definition() const { return definition; }
+         const Player &GetPlayer() const { return player; }
+diff --git a/game/src/levels/level_2/level_2.cpp b/game/src/levels/level_2/level_2.cpp
+index 0cc64b8..e2e78fc 100644
+--- a/game/src/levels/level_2/level_2.cpp
++++ b/game/src/levels/level_2/level_2.cpp
+@@ -20,21 +20,43 @@ namespace rage {
+             },
+             .accent = {177, 143, 210, 255},
+             .backdrop = ArtId::Level2,
+-            .world = {0, 0, 1000, 1500},
++            .world = {0, -120, 1000, 1570},
+             .spawn = {180, 1406},
+             .objects = {
++                // Floor.
+                 {.id = "floor", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {0, 1450}, .size = {1000, 50}, .assetId = "platform"},
+-                {.id = "stair-1", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {300, 1345}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-2", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {520, 1240}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-3", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {300, 1135}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-4", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {520, 1030}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-5", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {300, 925}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-6", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {520, 820}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-7", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {300, 715}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-8", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {520, 610}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-9", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {300, 505}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-10", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {520, 400}, .size = {200, 24}, .assetId = "platform"},
+-                {.id = "stair-11", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {300, 295}, .size = {200, 24}, .assetId = "platform"},
++                // Section 1 - first pillar. The tall pillars are the
++                // climbable walls; the small ledges are the steps between them.
++                {.id = "pillar-1", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {280, 1120}, .size = {90, 330}, .assetId = "platform"},
++                {.id = "ledge-1", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {400, 1110}, .size = {70, 20}, .assetId = "platform"},
++                {.id = "ledge-2", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {150, 1280}, .size = {75, 20}, .assetId = "platform"},
++                {.id = "ledge-3", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {390, 1250}, .size = {65, 20}, .assetId = "platform"},
++                // Section 2 - second pillar.
++                {.id = "pillar-2", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {620, 850}, .size = {90, 300}, .assetId = "platform"},
++                {.id = "ledge-4", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {450, 950}, .size = {70, 20}, .assetId = "platform"},
++                {.id = "ledge-5", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {760, 1020}, .size = {70, 20}, .assetId = "platform"},
++                {.id = "ledge-6", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {470, 820}, .size = {65, 20}, .assetId = "platform"},
++                // Section 3 - third pillar.
++                {.id = "pillar-3", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {300, 570}, .size = {90, 280}, .assetId = "platform"},
++                {.id = "ledge-7", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {160, 700}, .size = {70, 20}, .assetId = "platform"},
++                {.id = "ledge-8", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {430, 650}, .size = {65, 20}, .assetId = "platform"},
++                {.id = "ledge-9", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {160, 540}, .size = {65, 20}, .assetId = "platform"},
++                // Section 4 - fourth pillar.
++                {.id = "pillar-4", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {650, 300}, .size = {90, 270}, .assetId = "platform"},
++                {.id = "ledge-10", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {480, 440}, .size = {70, 20}, .assetId = "platform"},
++                {.id = "ledge-11", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {790, 480}, .size = {65, 20}, .assetId = "platform"},
++                {.id = "ledge-12", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {480, 290}, .size = {65, 20}, .assetId = "platform"},
++                // Section 5 - final climb.
++                {.id = "pillar-5", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {300, 80}, .size = {90, 220}, .assetId = "platform"},
++                {.id = "ledge-13", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {160, 180}, .size = {65, 20}, .assetId = "platform"},
++                {.id = "ledge-14", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {430, 140}, .size = {70, 20}, .assetId = "platform"},
++                {.id = "ledge-15", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {480, 40}, .size = {65, 20}, .assetId = "platform"},
++                // Extra small platforms.
++                {.id = "ledge-16", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {850, 1180}, .size = {55, 20}, .assetId = "platform"},
++                {.id = "ledge-17", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {100, 1020}, .size = {55, 20}, .assetId = "platform"},
++                {.id = "ledge-18", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {850, 760}, .size = {55, 20}, .assetId = "platform"},
++                {.id = "ledge-19", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {100, 430}, .size = {55, 20}, .assetId = "platform"},
++                {.id = "ledge-20", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {850, 200}, .size = {55, 20}, .assetId = "platform"},
+             },
+         };
+         return definition;
+diff --git a/game/src/main.cpp b/game/src/main.cpp
+index 9a94362..18467cf 100644
+--- a/game/src/main.cpp
++++ b/game/src/main.cpp
+@@ -183,7 +183,7 @@ namespace rage {
+     void Game::Draw(const Resources &resources, const std::string &settingsStatus) const {
+         switch (screen) {
+             case ScreenId::Playing:
+-                if (activeLevel) activeLevel->Draw(resources);
++                if (activeLevel) activeLevel->Draw(resources, config);
+                 return;
+             case ScreenId::MainMenu: DrawMainMenu(resources);
+                 break;
+@@ -193,7 +193,7 @@ namespace rage {
+                 break;
+             case ScreenId::Paused:
+                 if (activeLevel) {
+-                    activeLevel->Draw(resources);
++                    activeLevel->Draw(resources, config);
+                     DrawPauseMenu(resources, activeLevel->Definition());
+                 }
+                 break;
+diff --git a/game/src/player/player.cpp b/game/src/player/player.cpp
+index c8c9aab..16cda8a 100644
+--- a/game/src/player/player.cpp
++++ b/game/src/player/player.cpp
+@@ -22,6 +22,8 @@ namespace rage {
+         position = spawn;
+         velocity = {};
+         grounded = false;
++        climbing = false;
++        stamina = 100.0f;
+         health = maxHealth;
+         moveInput = 0.0f;
+     }
+@@ -70,22 +72,61 @@ namespace rage {
+         // Exact edge contact must count even when gravity displacement rounds to zero.
+         // Also establishes support before a jump immediately after spawning/resetting.
+         grounded = settleOnSupport();
++        // Climbing: holding W/UP while touching the side of a platform
++        // (within 2 px) latches onto it. Every platform is climbable.
++        // The player is snapped to the platform's side and horizontal
++        // movement is disabled while climbing.
++        const bool wasClimbing = climbing;
++        climbing = false;
++        if (input.climb && stamina > 0.0f) {
++            const Rectangle body = Bounds();
++            constexpr float contactDistance = 2.0f;
++            for (const Rectangle platform: platforms) {
++                const bool verticalOverlap = body.y < platform.y + platform.height
++                    && body.y + body.height > platform.y;
++                if (!verticalOverlap) continue;
++                const float playerRight = body.x + body.width;
++                const float platformRight = platform.x + platform.width;
++                // Touching the left side of the platform.
++                if (std::abs(playerRight - platform.x) <= contactDistance) {
++                    position.x = platform.x - body.width;
++                    climbing = true;
++                    break;
++                }
++                // Touching the right side of the platform.
++                if (std::abs(body.x - platformRight) <= contactDistance) {
++                    position.x = platformRight;
++                    climbing = true;
++                    break;
++                }
++            }
++        }
++        // Stop upward momentum when the player releases the climbing key.
++        if (wasClimbing && !climbing) {
++            velocity.y = 0.0f;
++        }
+         // One horizontal axis: opposite keys cancel; diagonal normalization is unnecessary.
+-        const float targetSpeed = std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
++        const float targetSpeed = climbing ? 0.0f : std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
+         const float rate = input.move != 0.0f ? groundAcceleration : groundFriction;
+-        if (input.jump && grounded) {
++        // Space still works for jumping. W/UP can initiate climbing instead.
++        if (input.jump && grounded && !climbing && stamina > 0.0f) {
+             velocity.y = -config.jumpSpeed;
+             grounded = false;
+         }
++        if (climbing) {
++            velocity.x = 0.0f;
++            velocity.y = -config.climbSpeed;
++            grounded = false;
++        }
+         // Small steps keep simple axis-separated AABB collisions reliable at lower frame rates.
+         float remaining = std::min(dt, 0.1f);
+-        if (input.move != 0.0f && std::abs(velocity.x) < startSpeed && velocity.x * input.move >= 0.0f) {
++        if (!climbing && input.move != 0.0f && std::abs(velocity.x) < startSpeed && velocity.x * input.move >= 0.0f) {
+             velocity.x = std::clamp(input.move, -1.0f, 1.0f) * startSpeed;
+         }
+         while (remaining > 0.0f) {
+             const float step = std::min(remaining, 1.0f / 120.0f);
+             remaining -= step;
+-            velocity.x = MoveToward(velocity.x, targetSpeed, rate * step);
++            if (!climbing) velocity.x = MoveToward(velocity.x, targetSpeed, rate * step);
+             position.x += velocity.x * step;
+             for (const auto platform: platforms) {
+                 if (!Overlaps(Bounds(), platform)) continue;
+@@ -96,7 +137,8 @@ namespace rage {
+             const float beforeClamp = position.x;
+             position.x = std::clamp(position.x, world.x, world.x + world.width - Bounds().width);
+             if (position.x != beforeClamp) velocity.x = 0.0f;
+-            velocity.y += config.gravity * step;
++            // Gravity is disabled while climbing.
++            if (!climbing) velocity.y += config.gravity * step;
+             position.y += velocity.y * step;
+             grounded = false;
+             for (const auto platform: platforms) {
+@@ -121,5 +163,19 @@ namespace rage {
+             }
+             if (!grounded) grounded = settleOnSupport();
+         }
++        // Stamina: standing on the ground regenerates it, climbing
++        // drains it, and being airborne drains it at the jump rate.
++        if (grounded) {
++            stamina += config.staminaRegen * dt;
++        } else if (climbing) {
++            stamina -= config.climbStaminaDrain * dt;
++        } else {
++            stamina -= config.jumpStaminaDrain * dt;
++        }
++        stamina = std::clamp(stamina, 0.0f, config.maxStamina);
++        if (stamina <= 0.0f) {
++            climbing = false;
++            velocity.y = 0.0f;
++        }
+     }
+ }
+diff --git a/game/src/player/player.h b/game/src/player/player.h
+index 4fdc6fb..21998b7 100644
+--- a/game/src/player/player.h
++++ b/game/src/player/player.h
+@@ -18,6 +18,9 @@ namespace rage {
+         Vector2 Position() const { return position; }
+         Vector2 Velocity() const { return velocity; }
+         bool Grounded() const { return grounded; }
++        bool Climbing() const { return climbing; }
++        float StaminaPercent() const { return stamina / 100.0f; }
++        float StaminaPercent(float maxStamina) const { return maxStamina > 0.0f ? stamina / maxStamina : 0.0f; }
+         void TakeDamage(int amount);
+         void Kill();
+         int GetHealth() const { return health; }
+@@ -29,6 +32,8 @@ namespace rage {
+         Vector2 position = {};
+         Vector2 velocity = {};
+         bool grounded = false;
++        bool climbing = false;
++        float stamina = 100.0f;
+         int maxHealth = 1;
+         int health = 1;
+         float moveInput = 0.0f;
+diff --git a/game/tests/foundation_tests.cpp b/game/tests/foundation_tests.cpp
+index a3d3e02..7256676 100644
+--- a/game/tests/foundation_tests.cpp
++++ b/game/tests/foundation_tests.cpp
+@@ -263,6 +263,35 @@ void TestMovement()
+     std::cout << "PASS: frame-independent walking, jump/landing, collision, bounds and reset\n";
+ }
+ 
++void TestClimbingAndStamina()
++{
++    GameConfig config;
++    const Rectangle world = {0, 0, 2000, 700};
++    const std::vector<Rectangle> floor = {{0, 650, 2000, 50}};
++    Check(config.maxStamina == 100.0f, "Default max stamina changed");
++    Player player;
++    player.Reset({100, 606});
++    Check(player.StaminaPercent() == 1.0f && player.StaminaPercent(config.maxStamina) == 1.0f,
++          "Player did not start at full stamina");
++    // Climb a wall: the player starts flush against the left side of
++    // a pillar and holds W/UP. Stamina drains while climbing.
++    const std::vector<Rectangle> wall = {{0, 650, 2000, 50}, {150, 550, 30, 100}};
++    player.Reset({120, 606});
++    InputFrame climb;
++    climb.climb = true;
++    for (int i = 0; i < 30; ++i) player.Update(1.0f / 60, climb, config, wall, world);
++    Check(player.Climbing() || player.Position().y < 606, "Climbing did not move the player up the wall");
++    Check(player.StaminaPercent() < 1.0f, "Climbing did not drain stamina");
++    Check(player.Position().x == 120.0f, "Climbing moved the player sideways");
++    // Let go, land, and stand still: stamina regenerates to full.
++    for (int i = 0; i < 180; ++i) player.Update(1.0f / 60, {}, config, floor, world);
++    Check(player.Grounded() && player.StaminaPercent() == 1.0f, "Stamina did not regenerate on the ground");
++    // Reset restores stamina.
++    player.Reset({120, 606});
++    Check(player.StaminaPercent() == 1.0f && !player.Climbing(), "Reset did not restore stamina");
++    std::cout << "PASS: wall climbing, stamina drain, ground regen and reset\n";
++}
++
+ void TestCanvasPresentation(const Resources& resources, Rectangle destination)
+ {
+     Image canvas = LoadImageFromTexture(resources.Canvas().texture);
+@@ -340,6 +369,7 @@ int RunSelfTests()
+         TestDialogue();
+         TestConfig();
+         TestMovement();
++        TestClimbingAndStamina();
+         TestPlayerHealth();
+         TestSliders();
+         TestSession();
+-- 
+2.43.0
+

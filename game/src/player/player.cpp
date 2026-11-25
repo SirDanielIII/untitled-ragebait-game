@@ -22,6 +22,8 @@ namespace rage {
         position = spawn;
         velocity = {};
         grounded = false;
+        climbing = false;
+        stamina = 100.0f;
         health = maxHealth;
         moveInput = 0.0f;
     }
@@ -70,22 +72,61 @@ namespace rage {
         // Exact edge contact must count even when gravity displacement rounds to zero.
         // Also establishes support before a jump immediately after spawning/resetting.
         grounded = settleOnSupport();
+        // Climbing: holding W/UP while touching the side of a platform
+        // (within 2 px) latches onto it. Every platform is climbable.
+        // The player is snapped to the platform's side and horizontal
+        // movement is disabled while climbing.
+        const bool wasClimbing = climbing;
+        climbing = false;
+        if (input.climb && stamina > 0.0f) {
+            const Rectangle body = Bounds();
+            constexpr float contactDistance = 2.0f;
+            for (const Rectangle platform: platforms) {
+                const bool verticalOverlap = body.y < platform.y + platform.height
+                    && body.y + body.height > platform.y;
+                if (!verticalOverlap) continue;
+                const float playerRight = body.x + body.width;
+                const float platformRight = platform.x + platform.width;
+                // Touching the left side of the platform.
+                if (std::abs(playerRight - platform.x) <= contactDistance) {
+                    position.x = platform.x - body.width;
+                    climbing = true;
+                    break;
+                }
+                // Touching the right side of the platform.
+                if (std::abs(body.x - platformRight) <= contactDistance) {
+                    position.x = platformRight;
+                    climbing = true;
+                    break;
+                }
+            }
+        }
+        // Stop upward momentum when the player releases the climbing key.
+        if (wasClimbing && !climbing) {
+            velocity.y = 0.0f;
+        }
         // One horizontal axis: opposite keys cancel; diagonal normalization is unnecessary.
-        const float targetSpeed = std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
+        const float targetSpeed = climbing ? 0.0f : std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
         const float rate = input.move != 0.0f ? groundAcceleration : groundFriction;
-        if (input.jump && grounded) {
+        // Space still works for jumping. W/UP can initiate climbing instead.
+        if (input.jump && grounded && !climbing && stamina > 0.0f) {
             velocity.y = -config.jumpSpeed;
+            grounded = false;
+        }
+        if (climbing) {
+            velocity.x = 0.0f;
+            velocity.y = -config.climbSpeed;
             grounded = false;
         }
         // Small steps keep simple axis-separated AABB collisions reliable at lower frame rates.
         float remaining = std::min(dt, 0.1f);
-        if (input.move != 0.0f && std::abs(velocity.x) < startSpeed && velocity.x * input.move >= 0.0f) {
+        if (!climbing && input.move != 0.0f && std::abs(velocity.x) < startSpeed && velocity.x * input.move >= 0.0f) {
             velocity.x = std::clamp(input.move, -1.0f, 1.0f) * startSpeed;
         }
         while (remaining > 0.0f) {
             const float step = std::min(remaining, 1.0f / 120.0f);
             remaining -= step;
-            velocity.x = MoveToward(velocity.x, targetSpeed, rate * step);
+            if (!climbing) velocity.x = MoveToward(velocity.x, targetSpeed, rate * step);
             position.x += velocity.x * step;
             for (const auto platform: platforms) {
                 if (!Overlaps(Bounds(), platform)) continue;
@@ -96,7 +137,8 @@ namespace rage {
             const float beforeClamp = position.x;
             position.x = std::clamp(position.x, world.x, world.x + world.width - Bounds().width);
             if (position.x != beforeClamp) velocity.x = 0.0f;
-            velocity.y += config.gravity * step;
+            // Gravity is disabled while climbing.
+            if (!climbing) velocity.y += config.gravity * step;
             position.y += velocity.y * step;
             grounded = false;
             for (const auto platform: platforms) {
@@ -120,6 +162,20 @@ namespace rage {
                 grounded = true;
             }
             if (!grounded) grounded = settleOnSupport();
+        }
+        // Stamina: standing on the ground regenerates it, climbing
+        // drains it, and being airborne drains it at the jump rate.
+        if (grounded) {
+            stamina += config.staminaRegen * dt;
+        } else if (climbing) {
+            stamina -= config.climbStaminaDrain * dt;
+        } else {
+            stamina -= config.jumpStaminaDrain * dt;
+        }
+        stamina = std::clamp(stamina, 0.0f, config.maxStamina);
+        if (stamina <= 0.0f) {
+            climbing = false;
+            velocity.y = 0.0f;
         }
     }
 }

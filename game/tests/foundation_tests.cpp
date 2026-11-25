@@ -263,6 +263,35 @@ void TestMovement()
     std::cout << "PASS: frame-independent walking, jump/landing, collision, bounds and reset\n";
 }
 
+void TestClimbingAndStamina()
+{
+    GameConfig config;
+    const Rectangle world = {0, 0, 2000, 700};
+    const std::vector<Rectangle> floor = {{0, 650, 2000, 50}};
+    Check(config.maxStamina == 100.0f, "Default max stamina changed");
+    Player player;
+    player.Reset({100, 606});
+    Check(player.StaminaPercent() == 1.0f && player.StaminaPercent(config.maxStamina) == 1.0f,
+          "Player did not start at full stamina");
+    // Climb a wall: the player starts flush against the left side of
+    // a pillar and holds W/UP. Stamina drains while climbing.
+    const std::vector<Rectangle> wall = {{0, 650, 2000, 50}, {150, 550, 30, 100}};
+    player.Reset({120, 606});
+    InputFrame climb;
+    climb.climb = true;
+    for (int i = 0; i < 30; ++i) player.Update(1.0f / 60, climb, config, wall, world);
+    Check(player.Climbing() || player.Position().y < 606, "Climbing did not move the player up the wall");
+    Check(player.StaminaPercent() < 1.0f, "Climbing did not drain stamina");
+    Check(player.Position().x == 120.0f, "Climbing moved the player sideways");
+    // Let go, land, and stand still: stamina regenerates to full.
+    for (int i = 0; i < 180; ++i) player.Update(1.0f / 60, {}, config, floor, world);
+    Check(player.Grounded() && player.StaminaPercent() == 1.0f, "Stamina did not regenerate on the ground");
+    // Reset restores stamina.
+    player.Reset({120, 606});
+    Check(player.StaminaPercent() == 1.0f && !player.Climbing(), "Reset did not restore stamina");
+    std::cout << "PASS: wall climbing, stamina drain, ground regen and reset\n";
+}
+
 void TestCanvasPresentation(const Resources& resources, Rectangle destination)
 {
     Image canvas = LoadImageFromTexture(resources.Canvas().texture);
@@ -340,6 +369,7 @@ int RunSelfTests()
         TestDialogue();
         TestConfig();
         TestMovement();
+        TestClimbingAndStamina();
         TestPlayerHealth();
         TestSliders();
         TestSession();
