@@ -304,10 +304,11 @@ namespace rage {
         });
         SubmitSprites(queue, resources);
         SubmitPlayer(queue, resources);
-        // Drawn here, inside the camera transform, so the bar sits in
-        // world space above the player like the PR's version did.
-        DrawStaminaBar(resources, config);
         queue.Flush();
+        // Drawn after the queue flushes, still inside the camera
+        // transform, so the bar sits in world space above the player
+        // and is not painted over by the backdrop and sprites.
+        DrawStaminaBar(resources, config);
         EndMode2D();
         EndScissorMode();
         DrawTextFit(resources, definition.title, {40, 26, 1380, 44}, 36, definition.accent);
