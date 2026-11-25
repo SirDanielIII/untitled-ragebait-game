@@ -291,7 +291,7 @@ namespace rage {
         });
     }
 
-    void Level::Draw(const Resources &resources) const {
+    void Level::Draw(const Resources &resources, const GameConfig &config) const {
         resources.BeginClip(worldViewport);
         DrawRectangleRec(worldViewport, Color{36, 44, 60, 255});
         BeginMode2D(camera);
@@ -305,12 +305,38 @@ namespace rage {
         SubmitSprites(queue, resources);
         SubmitPlayer(queue, resources);
         queue.Flush();
+        // Drawn after the queue flushes, still inside the camera
+        // transform, so the bar sits in world space above the player
+        // and is not painted over by the backdrop and sprites.
+        DrawStaminaBar(resources, config);
         EndMode2D();
         EndScissorMode();
         DrawTextFit(resources, definition.title, {40, 26, 1380, 44}, 36, definition.accent);
-        DrawTextFit(resources, "A/D: move   Space: jump   Esc: pause   R: restart", {40, 88, 1480, 30}, 24, RAYWHITE);
+        DrawTextFit(resources, "A/D: move   Space: jump   W/UP: climb   Esc: pause   R: restart", {40, 88, 1480, 30}, 24, RAYWHITE);
         dialogue.Draw(resources, {40, 714, 1520, 162}, currentCue.speaker.c_str(), currentCue.fontSize,
                       currentCue.allowSkip, currentCue.allowReplay);
         DrawTextFit(resources, definition.description, {40, 678, 1500, 28}, 22, Color{173, 165, 190, 255});
+    }
+
+    void Level::DrawStaminaBar(const Resources &resources, const GameConfig &config) const {
+        // Stamina bar above the player: green above 60%, yellow above
+        // 30%, red below that, on a dark background.
+        (void)resources;
+        const Rectangle playerBounds = player.Bounds();
+        const float barWidth = 40.0f;
+        const float barHeight = 6.0f;
+        const float barX = playerBounds.x + (playerBounds.width - barWidth) / 2.0f;
+        const float barY = playerBounds.y - 12.0f;
+        const float staminaPercent = player.StaminaPercent(config.maxStamina);
+        Color staminaColor = GREEN;
+        if (staminaPercent < 0.3f) {
+            staminaColor = RED;
+        } else if (staminaPercent < 0.6f) {
+            staminaColor = YELLOW;
+        }
+        DrawRectangle(static_cast<int>(barX), static_cast<int>(barY), static_cast<int>(barWidth),
+                      static_cast<int>(barHeight), DARKGRAY);
+        DrawRectangle(static_cast<int>(barX), static_cast<int>(barY),
+                      static_cast<int>(barWidth * staminaPercent), static_cast<int>(barHeight), staminaColor);
     }
 }

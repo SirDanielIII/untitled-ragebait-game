@@ -18,6 +18,9 @@ namespace rage {
         Vector2 Position() const { return position; }
         Vector2 Velocity() const { return velocity; }
         bool Grounded() const { return grounded; }
+        bool Climbing() const { return climbing; }
+        float StaminaPercent() const { return stamina / 100.0f; }
+        float StaminaPercent(float maxStamina) const { return maxStamina > 0.0f ? stamina / maxStamina : 0.0f; }
         void TakeDamage(int amount);
         void Kill();
         int GetHealth() const { return health; }
@@ -29,6 +32,8 @@ namespace rage {
         Vector2 position = {};
         Vector2 velocity = {};
         bool grounded = false;
+        bool climbing = false;
+        float stamina = 100.0f;
         int maxHealth = 1;
         int health = 1;
         float moveInput = 0.0f;
