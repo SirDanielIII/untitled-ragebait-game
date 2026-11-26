@@ -3,9 +3,29 @@
 Every sprite and animation in the game is described in the **CISC 320 Game Data** Google Sheet instead of in C++. When the game starts, it reads an exported copy of that sheet, loads each PNG once, and draws a placeholder for anything that has no art yet.
 
 - **Changing art** (a new PNG, a different size, frame count, speed, pivot or layer) needs **no code**.
-- **Putting a new object in a level** needs a few lines in that level's file, because the sheet says *what* something looks like, not *where* it goes.
+- **Putting a new object in a level** needs one line in that level's file, because the sheet says *what* something looks like, not *where* it goes.
 
-Contents: [Folders](#folders) · [1. Make the art](#1-make-the-art) · [2. Describe it in Game Data](#2-describe-it-in-game-data) · [3. Get it into the game](#3-get-it-into-the-game) · [4. Player art](#4-player-art) · [5. Place objects in a level](#5-place-objects-in-a-level) · [6. Animated objects](#6-animated-objects) · [How sprites are scaled](#how-sprites-are-scaled) · [Changing existing art](#changing-existing-art) · [Placeholders and invisible objects](#placeholders-and-invisible-objects) · [Troubleshooting](#troubleshooting) · [Code reference](#code-reference) · [Tests](#tests) · [Committing](#committing)
+Contents: [How to add a sprite](#how-to-add-a-sprite) · [Folders](#folders) · [1. Make the art](#1-make-the-art) · [2. Describe it in Game Data](#2-describe-it-in-game-data) · [3. Get it into the game](#3-get-it-into-the-game) · [4. Player art](#4-player-art) · [5. Place objects in a level](#5-place-objects-in-a-level) · [6. Animated objects](#6-animated-objects) · [How sprites are scaled](#how-sprites-are-scaled) · [Changing existing art](#changing-existing-art) · [Placeholders and invisible objects](#placeholders-and-invisible-objects) · [Troubleshooting](#troubleshooting) · [Code reference](#code-reference) · [Tests](#tests) · [Committing](#committing)
+
+## How to add a sprite
+
+The short version. Each step links to the details below.
+
+1. **Make a PNG** at 100%, with a transparent background, cropped tightly. Animation frames go side by side in one PNG. Save it in `game/resources/art/static/` (one frame) or `game/resources/art/animated/` (several frames). [Details](#1-make-the-art)
+2. **Add a row to the Game Data sheet** (Assets tab): Animation ID `<asset>_<state>`, Asset ID, File Name, the size of one frame, and the number of frames. [All columns](#2-describe-it-in-game-data)
+   ```
+   school_desk_idle,school_desk,school_desk.png,32,32,1,,,,bottom-centre,,Middle,
+   ```
+3. **Export the CSV:** File → Download → Comma-separated values, rename it `game_data.csv`, and replace `game/resources/data/game_data.csv`. [Details](#3-get-it-into-the-game)
+4. **Put it in the game:**
+   - **The player:** Asset ID `player_character` with `player_idle`, `player_walk`, `player_jump`, `player_fall`. No code. [Details](#4-player-art)
+   - **Anything in a level:** add one line to the level's `.objects` list in `game/src/levels/level_<n>/level_<n>.cpp`. The last argument is the Asset ID:
+     ```cpp
+     SolidPlatform("desk-1", {600, 586, 64, 64}, "school_desk"),   // the player can stand on it
+     ArtObject("poster-1", {800, 400, 64, 96}, "poster"),          // art only, the player walks past
+     ```
+     The box is `{x, y, width, height}`: x/y is the top-left (y grows downward), and width/height is the PNG size × 2. [Details](#5-place-objects-in-a-level)
+5. **Build, then run.** If it doesn't show, check the terminal for `Game Data:` warnings. [Troubleshooting](#troubleshooting)
 
 ## Folders
 
@@ -120,7 +140,7 @@ Add the object to the level's `.objects` list. Its Asset ID is the **Asset ID** 
 
 ```cpp
 SolidPlatform("step-1", {350, 550, 180, 24}),                  // stand on it; Asset ID "platform"
-SolidPlatform("desk-1", {600, 586, 96, 64}, "school_desk"),   // stand on it, with its own art
+SolidPlatform("desk-1", {600, 586, 64, 64}, "school_desk"),   // stand on it, with its own art
 SolidPlatform("wire-1", {2940, 800, 220, 16}, ""),            // collision only, no sprite
 ArtObject("poster-1", {800, 400, 64, 96}, "poster"),          // art only, no collision
 ```
@@ -189,28 +209,35 @@ The sprite keeps its shape (it is never stretched), its size is rounded down so 
 
 ### Choosing coordinates
 
-Positions are **world pixels**, the same units as the level's `.platforms`, `.spawn` and `.world` at the top of the same file:
+Positions are **world pixels**, the same units as the level's `.world`, `.spawn` and `.objects` at the top of the same file (Level 0 shown):
 
 ```cpp
-.world = {0, 0, 2600, 700},        // level is 2600 wide, 700 tall
-.spawn = {100, 606},               // where the player starts
-.platforms = {
-    {0, 650, 2600, 50},            // {x, y, width, height}: the floor; its top is y = 650
-    {400, 545, 250, 24},           // a platform from x 400 to 650, top at y = 545
+.world = {0, 0, 1500, 700},                         // level is 1500 wide, 700 tall
+.spawn = {100, 606},                                // where the player starts
+.objects = {
+    SolidPlatform("floor", {0, 650, 1500, 50}),     // the floor; its top is y = 650
+    SolidPlatform("step-1", {350, 550, 180, 24}),   // a step from x 350 to 530, top at y = 550
 ```
 
 - `x` grows to the right from 0. `y` grows **downward** from 0 at the top.
-- The position is where the **pivot** goes. For `bottom-centre`, use the top `y` of whatever it stands on: `{600, 650}` stands on Level 1's floor, and `{525, 545}` stands on the middle of the second platform.
-- For `top-left`, the position is the image's top-left corner. For `centre`, it is the middle of the image.
+- For an object, `{x, y}` is the top-left of its box. To stand it on the floor, use `y = 650 − height`.
+- In `SubmitSprites`, the position is where the **pivot** goes. For `bottom-centre`, use the top `y` of whatever it stands on: `{600, 650}` stands on Level 0's floor. For `top-left` it is the image's top-left corner; for `centre`, its middle.
+- Each level has its own size: Level 1's floor is at y 1480, not 650.
 - Expect some trial and error: change the numbers, build, look.
 
 ### Making it solid
 
-A sprite is only a picture, so the player walks through it. To make something solid, also add a rectangle in the same place to `.platforms`. Hazards and triggers need their own gameplay code in `OnUpdate`. Keep their rectangles in the level code, not in the art.
+`SolidPlatform` objects are solid. `ArtObject`s and `SubmitSprites` sprites are only pictures, so the player walks through them. Hazards and triggers use the full form with `CollisionType::Hazard` or `CollisionType::Trigger`.
 
 ## 6. Animated objects
 
-An animated object needs an `Animator` to track its state and playback time. Add one per object as a member of the level class:
+**Objects animate on their own.** An object plays `<assetId>_<state>` with the row's FPS and Loops, starting in `idle`. To switch animations, set its state from the level's code; the new animation starts from its first frame:
+
+```cpp
+if (auto *anvil = Objects().Get("anvil-1")) anvil->SetState("fall");   // plays the anvil_fall row
+```
+
+The rest of this section is only for sprites a level draws itself in `SubmitSprites`. Those need their own `Animator` to track state and playback time, one per sprite, as a member of the level class:
 
 ```cpp
 class Level1 final : public Level {
