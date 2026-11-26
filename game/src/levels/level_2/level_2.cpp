@@ -128,19 +128,54 @@ namespace rage {
 
     void Level2::OnReset() {
         birds = {{
-            // Lower bird
+            // Lower bird 1
             {{250, 1200, BIRD_WIDTH, BIRD_HEIGHT},
              150.0f, 200.0f, 520.0f, 1200.0f,
              1.5f, 0.0f, 0.0f, true, false},
 
-            // Middle bird
-            {{500, 760, BIRD_WIDTH, BIRD_HEIGHT},
-             180.0f, 450.0f, 850.0f, 760.0f,
+            // Lower bird 2
+            {{650, 1080, BIRD_WIDTH, BIRD_HEIGHT},
+             170.0f, 500.0f, 850.0f, 1080.0f,
+             2.0f, 0.0f, 0.0f, false, false},
+
+            // Lower bird 3
+            {{400, 1000, BIRD_WIDTH, BIRD_HEIGHT},
+             160.0f, 250.0f, 650.0f, 1000.0f,
              2.5f, 0.0f, 0.0f, true, false},
 
-            // Upper bird
-            {{600, 280, BIRD_WIDTH, BIRD_HEIGHT},
-             210.0f, 500.0f, 900.0f, 280.0f,
+            // Middle bird 1
+            {{500, 900, BIRD_WIDTH, BIRD_HEIGHT},
+             180.0f, 350.0f, 750.0f, 900.0f,
+             2.5f, 0.0f, 0.0f, true, false},
+
+            // Middle bird 2
+            {{750, 760, BIRD_WIDTH, BIRD_HEIGHT},
+             190.0f, 600.0f, 900.0f, 760.0f,
+             2.0f, 0.0f, 0.0f, false, false},
+
+            // Middle bird 3
+            {{300, 620, BIRD_WIDTH, BIRD_HEIGHT},
+             200.0f, 200.0f, 550.0f, 620.0f,
+             2.5f, 0.0f, 0.0f, true, false},
+
+            // Middle bird 4
+            {{800, 580, BIRD_WIDTH, BIRD_HEIGHT},
+             210.0f, 650.0f, 950.0f, 580.0f,
+             3.0f, 0.0f, 0.0f, false, false},
+
+            // Upper bird 1
+            {{700, 480, BIRD_WIDTH, BIRD_HEIGHT},
+             210.0f, 550.0f, 900.0f, 480.0f,
+             3.0f, 0.0f, 0.0f, false, false},
+
+            // Upper bird 2
+            {{450, 350, BIRD_WIDTH, BIRD_HEIGHT},
+             220.0f, 350.0f, 750.0f, 350.0f,
+             2.5f, 0.0f, 0.0f, true, false},
+
+            // Rooftop bird
+            {{650, 180, BIRD_WIDTH, BIRD_HEIGHT},
+             240.0f, 500.0f, 900.0f, 180.0f,
              3.5f, 0.0f, 0.0f, false, false}
         }};
     }
