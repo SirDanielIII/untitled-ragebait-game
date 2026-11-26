@@ -1,7 +1,7 @@
 #pragma once
 
 #include "levels/level.h"
-
+#include "levels/level_1/fake_timer.h"
 #include <array>
 #include <cstdint>
 
@@ -35,12 +35,14 @@ namespace rage {
         void OnReset() override;
         void OnUpdate(float dt, const InputFrame& input) override;
         void DrawWorld(const Resources& resources) const override;
+        void DrawHud(const Resources& resources) const override;
         std::vector<Event> CreateEvents();
         void Respawn(const char* notification);
 
         std::array<Vehicle, 3> traffic = {};
         std::array<Bird, 2> birds = {};
         std::array<FallingStar, 2> stars = {};
+        FakeTimer timer;
 
         Vector2 checkpoint = {};
         float collisionCooldown = 0.0f;
