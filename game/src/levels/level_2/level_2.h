@@ -29,7 +29,7 @@ namespace rage {
 
         std::vector<Event> CreateEvents();
 
-        std::array<Bird, 3> birds = {};
+        std::array<Bird, 10> birds = {};
     };
 
 }
