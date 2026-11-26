@@ -104,7 +104,53 @@ The player needs no code. Give its rows the Asset ID **`player_character`** and 
 
 ## 5. Place objects in a level
 
-Each level's code is in `game/src/levels/level_<number>/level_<number>.cpp`. Near the bottom is the level's class (`Level1` and so on). Add a `SubmitSprites` function inside it, next to `OnReset` and `OnUpdate`:
+Each level's code is in `game/src/levels/level_<number>/level_<number>.cpp`. Pick the way that fits the thing you're adding:
+
+| The thing... | Use | Drawing code needed |
+|---|---|---|
+| sits there, collides or is a hazard (platform, furniture, trash can) | an entry in `.objects` with an `.assetId` | none |
+| is moved by the level's own script (Level 1's cars and birds) | an art-only object in `.objects`, moved onto the script's hitbox each frame | one line per thing in the level's `SyncObjects` |
+| is pure decoration with no object (a poster, a sign) | a `SubmitSprites` override | a few lines |
+
+Don't draw art with `DrawRectangle`/`DrawCircle` in `DrawWorld`: shapes there can't be swapped for sprites. `DrawWorld` is for text, road markings and temporary stand-ins.
+
+### Objects: no drawing code
+
+Add the object to the level's `.objects` list. Its Asset ID is the **Asset ID** column of the sheet, and it plays `<assetId>_<state>` (it starts in `idle`; with no matching state it uses the asset's first row). Every level uses the same shortcuts from `objects/game_object.h`, one line per object, with the box as `{x, y, width, height}`:
+
+```cpp
+SolidPlatform("step-1", {350, 550, 180, 24}),                  // stand on it; Asset ID "platform"
+SolidPlatform("desk-1", {600, 586, 96, 64}, "school_desk"),   // stand on it, with its own art
+SolidPlatform("wire-1", {2940, 800, 220, 16}, ""),            // collision only, no sprite
+ArtObject("poster-1", {800, 400, 64, 96}, "poster"),          // art only, no collision
+```
+
+For anything else (hazards, triggers, moving or falling objects) write the full form:
+
+```cpp
+{.id = "spikes-1", .type = ObjectType::Hazard, .collision = CollisionType::Hazard,
+ .position = {500, 600}, .size = {60, 50}, .assetId = "spikes"},
+```
+
+The box is in world pixels: x/y is its top-left, and a 48×32 PNG is 96×64 at 2×. With Pivot `bottom-centre` the sprite stands on the bottom-centre of the box. In the full form, `.collision` is `Solid` (stand on it), `Hazard` (hurts), `Trigger` or `None` (walk past it). The base `Level::SubmitSprites` draws every object, so nothing else is needed.
+
+### Things the level script moves
+
+Some levels move things with their own code instead of the object system (Level 1 keeps its cars in `traffic` and checks their hits itself). Give each one an `ArtObject`, and copy the script's rectangle onto it every frame. Level 1 does this in its `SyncObjects()`:
+
+```cpp
+// In .objects, after the existing entries:
+ArtObject("car-1", {760, 1428, 108, 52}, "car"),   // no collision, no placeholder
+
+// In SyncObjects(), called at the end of OnReset and OnUpdate:
+place("car-1", traffic[0].bounds);
+```
+
+Art-only objects use `.drawPlaceholder = false`, so until the row exists nothing is drawn and the old `DrawWorld` shape stays visible. Once the row exists the sprite draws on top of it; then delete that shape from `DrawWorld`.
+
+### Decorations: a `SubmitSprites` override
+
+Near the bottom of the level's file is its class (`Level1` and so on). Add a `SubmitSprites` function inside it, next to `OnReset` and `OnUpdate`, and declare it in the level's `.h` with `override`:
 
 ```cpp
 class Level1 final : public Level {
@@ -234,6 +280,7 @@ Placement in levels stays the same because positions refer to the pivot, not the
 ## Placeholders and invisible objects
 
 - **Art not made yet:** add the row with the planned size and leave File Name blank (or name a PNG that doesn't exist yet). The game draws a translucent magenta box of that size at the pivot, so programmers can place and test objects before the art exists. When the PNG arrives, it replaces the box on the next build with no code changes.
+- **Level still draws a stand-in:** set `.drawPlaceholder = false` on the object. With no row, nothing is drawn for it; with a row, the sprite appears.
 - **Never drawn:** File Name `none`, for example trigger zones. These rows can still be looked up and placed, but nothing is drawn and they are never reported as missing.
 
 ## Troubleshooting

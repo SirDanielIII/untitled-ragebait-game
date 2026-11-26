@@ -34,6 +34,10 @@ namespace rage {
 
         void OnReset() override;
         void OnUpdate(float dt, const InputFrame& input) override;
+        void UpdateScript(float dt, const InputFrame& input);
+        // Moves the art-only objects onto the hitboxes the script moved,
+        // so each sprite always sits exactly where its collision is.
+        void SyncObjects();
         void DrawWorld(const Resources& resources) const override;
         std::vector<Event> CreateEvents();
         void Respawn(const char* notification);

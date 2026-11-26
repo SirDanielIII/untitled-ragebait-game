@@ -130,6 +130,10 @@ void TestAssetIntegration() {
     manager.Create(GameObjectDefinition{.id = "hidden", .type = ObjectType::Static,
                                         .collision = CollisionType::Solid, .position = {0, 0},
                                         .size = {10, 10}, .assetId = "platform", .visible = false});
+    // No row and drawPlaceholder off: the level draws its own stand-in, so nothing is queued.
+    manager.Create(GameObjectDefinition{.id = "stand-in", .type = ObjectType::Static,
+                                        .collision = CollisionType::None, .position = {0, 0},
+                                        .size = {10, 10}, .assetId = "car", .drawPlaceholder = false});
     RenderQueue queue;
     bool placeholderCalled = false;
     Rectangle placeholderBounds{};
@@ -137,7 +141,8 @@ void TestAssetIntegration() {
         placeholderCalled = true;
         placeholderBounds = bounds;
     });
-    Check(queue.Size() == 1, "SubmitSprites queued the invisible or hidden object, or skipped the visible one");
+    Check(queue.Size() == 1,
+          "SubmitSprites queued an invisible, hidden or stand-in object, or skipped the visible one");
     queue.Flush();
     Check(placeholderCalled && placeholderBounds.width == 1500 && placeholderBounds.height == 50,
           "Placeholder was not drawn at the object's bounds when its Game Data row is missing");
@@ -194,13 +199,54 @@ void TestLevelIntegration() {
     Check(!scene.IsComplete() && scene.RespawnPoint().x == definition.spawn.x,
           "Level reset did not clear completion and respawn");
 }
+void TestShortcuts() {
+    // SolidPlatform and ArtObject must build the same definitions as the full form.
+    const auto platform = SolidPlatform("step", {350, 550, 180, 24});
+    Check(platform.id == "step" && platform.type == ObjectType::Static &&
+          platform.collision == CollisionType::Solid && platform.position.x == 350 &&
+          platform.position.y == 550 && platform.size.x == 180 && platform.size.y == 24 &&
+          platform.assetId == "platform" && platform.drawPlaceholder,
+          "SolidPlatform built the wrong definition");
+    Check(SolidPlatform("wire", {0, 0, 10, 10}, "").assetId.empty(), "SolidPlatform ignored an empty Asset ID");
+    const auto art = ArtObject("car", {760, 1428, 108, 52}, "car");
+    Check(art.collision == CollisionType::None && art.assetId == "car" && !art.drawPlaceholder &&
+          art.size.x == 108 && art.size.y == 52, "ArtObject built the wrong definition");
+    // Level 0's objects are still four solid platforms, with the floor where it was.
+    const auto &level0 = Level0Definition().objects;
+    Check(level0.size() == 4 && level0[0].id == "floor" && level0[0].position.y == 650 &&
+          level0[0].size.x == 1500 && level0[0].collision == CollisionType::Solid,
+          "Level 0's objects changed");
+}
+
+void TestLevel1ArtObjects() {
+    // Level 1 moves its cars with its own script. Their art-only objects must
+    // follow those hitboxes, add no collision, and go back on restart.
+    GameConfig config;
+    auto level = CreateLevel(LevelId::Level1, config);
+    for (const char *id : {"trash-can", "hydrant", "car-1", "car-2", "car-3", "bird-1", "bird-2",
+                           "flying-pig", "chicken"}) {
+        const auto *object = level->Objects().Get(id);
+        Check(object && object->Collision() == CollisionType::None && !object->AssetId().empty(),
+              "Level 1 art object is missing, collides, or has no Asset ID");
+    }
+    const float carStart = level->Objects().Get("car-1")->Position().x;
+    const float birdStart = level->Objects().Get("bird-1")->Position().x;
+    level->Update(0.5f, {}, config);
+    Check(level->Objects().Get("car-1")->Position().x < carStart &&
+          level->Objects().Get("bird-1")->Position().x < birdStart,
+          "Level 1 art objects did not follow the scripted cars and birds");
+    level->Update(0, {.resetPlayer = true}, config);
+    Check(level->Objects().Get("car-1")->Position().x == carStart, "Restart did not move the car art back");
+}
 }  // namespace
 
 void TestObjects() {
     TestManagerAndObjects();
     TestAssetIntegration();
     TestLevelIntegration();
+    TestShortcuts();
+    TestLevel1ArtObjects();
     std::cout << "PASS: game objects, manager, AssetManager placeholders, EventManager notifications, "
-                 "hazards, checkpoints and level completion\n";
+                 "hazards, checkpoints, level completion, shortcuts and Level 1 art objects\n";
 }
 }  // namespace rage

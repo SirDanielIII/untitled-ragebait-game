@@ -20,8 +20,26 @@ namespace rage {
             {3495.0f, 770.0f, 200.0f, 16.0f}
         }};
 
+        // Sidewalk obstacles. Level 1 checks hits on these itself (see UpdateScript).
+        constexpr Rectangle trashCan{260.0f, 1426.0f, 46.0f, 54.0f};
+        constexpr Rectangle hydrant{445.0f, 1437.0f, 38.0f, 43.0f};
+
+        // Object ids of the art-only objects that follow the script's hitboxes.
+        constexpr std::array<const char*, 3> carIds{"car-1", "car-2", "car-3"};
+        constexpr std::array<const char*, 2> birdIds{"bird-1", "bird-2"};
+
         bool Intersects(Rectangle a, Rectangle b) {
             return CheckCollisionRecs(a, b);
+        }
+
+        // The flying pig's hitbox, which loops on the level timer.
+        Rectangle FlyingPig(float elapsed) {
+            return {4160.0f - std::fmod(elapsed * 110.0f, 440.0f), 609.0f, 94.0f, 45.0f};
+        }
+
+        // The chicken's drawn area; it has no hitbox. Its feet are on the road.
+        Rectangle ChickenBounds(float x) {
+            return {x, floorY - 30.0f, 48.0f, 30.0f};
         }
 
         void MoveRoadCar(Rectangle& body, float speed, float dt) {
@@ -47,20 +65,6 @@ namespace rage {
         bool WireWarning(int i, float elapsed) {
             const float phase = WirePhase(i, elapsed);
             return phase >= 0.65f && phase < 1.15f;
-        }
-
-        // The merged engine owns solid collision through ObjectManager.
-        // Local helper keeps each authored ledge a concise GameObjectDefinition.
-        GameObjectDefinition SolidPlatform(const char* id, Rectangle bounds,
-                                           const char* assetId = "platform") {
-            return {
-                .id = id,
-                .type = ObjectType::Static,
-                .collision = CollisionType::Solid,
-                .position = {bounds.x, bounds.y},
-                .size = {bounds.width, bounds.height},
-                .assetId = assetId
-            };
         }
 
         void DrawCar(Rectangle r, Color paint) {
@@ -96,6 +100,7 @@ namespace rage {
             .spawn = {100.0f, 1436.0f},
             // The merged GameObject system replaces LevelDefinition::platforms.
             // Collision remains identical to the authored route in Level 1 v1.0.
+            // SolidPlatform and ArtObject are shared shortcuts (objects/game_object.h).
             .objects = {
                 SolidPlatform("sidewalk-road", {0, floorY, 2140, 120}),
                 SolidPlatform("pileup-step-1", {1850, 1378, 150, 22}),
@@ -116,7 +121,19 @@ namespace rage {
                 SolidPlatform("cloud-3", {4170, 665, 180, 22}, ""),
                 SolidPlatform("cloud-4", {4400, 755, 170, 22}, ""),
                 SolidPlatform("rainbow-entrance", {4605, 785, 160, 22}, ""),
-                SolidPlatform("campus-sidewalk", {4875, floorY, 325, 120})
+                SolidPlatform("campus-sidewalk", {4875, floorY, 325, 120}),
+                // Art-only objects. Keep them after the platforms: DrawWorld finds
+                // the clouds by their index in this list. Asset IDs are the Asset ID
+                // column of the Game Data sheet; add a row and the sprite appears.
+                ArtObject("trash-can", trashCan, "trash_can"),
+                ArtObject("hydrant", hydrant, "hydrant"),
+                ArtObject(carIds[0], {760, 1428, 108, 52}, "car"),
+                ArtObject(carIds[1], {1240, 1428, 116, 52}, "car"),
+                ArtObject(carIds[2], {1710, 1428, 120, 52}, "car"),
+                ArtObject(birdIds[0], {3510, 711, 65, 22}, "bird"),
+                ArtObject(birdIds[1], {4260, 598, 70, 20}, "bird"),
+                ArtObject("flying-pig", FlyingPig(0), "flying_pig"),
+                ArtObject("chicken", ChickenBounds(1550), "chicken")
             }
         };
         return definition;
@@ -154,6 +171,7 @@ namespace rage {
         sliding = false;
         slideFinished = false;
         campusReached = false;
+        SyncObjects();
     }
 
     void Level1::Respawn(const char* notification) {
@@ -165,6 +183,21 @@ namespace rage {
     }
 
     void Level1::OnUpdate(float dt, const InputFrame& input) {
+        UpdateScript(dt, input);
+        SyncObjects(); // After the script, whichever way it returned, so sprites never lag.
+    }
+
+    void Level1::SyncObjects() {
+        const auto place = [this](const char* id, Rectangle bounds) {
+            if (auto* object = Objects().Get(id)) object->SetPosition({bounds.x, bounds.y});
+        };
+        for (std::size_t i = 0; i < traffic.size(); ++i) place(carIds[i], traffic[i].bounds);
+        for (std::size_t i = 0; i < birds.size(); ++i) place(birdIds[i], birds[i].bounds);
+        place("flying-pig", FlyingPig(ElapsedSeconds()));
+        place("chicken", ChickenBounds(chickenX));
+    }
+
+    void Level1::UpdateScript(float dt, const InputFrame& input) {
         // Slide motion stays inside the level rather than changing shared movement code.
         if (sliding) {
             slideProgress = std::min(1.0f, slideProgress + dt / slideDuration);
@@ -237,8 +270,6 @@ namespace rage {
         if (collisionCooldown > 0.0f) return;
 
         // Sidewalk: two stationary objects to jump over.
-        constexpr Rectangle trashCan{260.0f, 1426.0f, 46.0f, 54.0f};
-        constexpr Rectangle hydrant{445.0f, 1437.0f, 38.0f, 43.0f};
         if (Intersects(player, trashCan) || Intersects(player, hydrant)) {
             Respawn("level1.obstacle_hit");
             return;
@@ -274,8 +305,7 @@ namespace rage {
         }
 
         // One flying pig: tap S to duck beneath its hitbox while it passes.
-        const float pigX = 4160.0f - std::fmod(ElapsedSeconds() * 110.0f, 440.0f);
-        const Rectangle pig{pigX, 609.0f, 94.0f, 45.0f};
+        const Rectangle pig = FlyingPig(ElapsedSeconds());
         if (Intersects(player, pig) && duckSeconds <= 0.0f) {
             Respawn("level1.pig_hit");
             return;
@@ -295,6 +325,9 @@ namespace rage {
     }
 
     void Level1::DrawWorld(const Resources&) const {
+        // Stand-in shapes. Things with an art-only object (the list at the end of
+        // .objects) show their sprite on top once their Game Data row exists;
+        // delete that thing's shapes here then.
         // Sidewalk and roadway. The actual collision platforms are in LevelDefinition.
         DrawRectangleRec({0.0f, 1455.0f, 580.0f, 25.0f}, {151, 158, 175, 255});
         DrawRectangleRec({580.0f, 1430.0f, 1260.0f, 50.0f}, {50, 55, 71, 255});
@@ -381,7 +414,7 @@ namespace rage {
         }
 
         // Flying pig; tapping S grants a short collision-safe duck period.
-        const float pigX = 4160.0f - std::fmod(ElapsedSeconds() * 110.0f, 440.0f);
+        const float pigX = FlyingPig(ElapsedSeconds()).x;
         DrawEllipse(static_cast<int>(pigX + 46), 631, 43, 20, {237, 154, 174, 255});
         DrawCircle(static_cast<int>(pigX + 76), 625, 18, {244, 170, 188, 255});
         DrawEllipse(static_cast<int>(pigX + 25), 615, 22, 10, {254, 211, 221, 255});

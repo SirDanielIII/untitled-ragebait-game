@@ -34,6 +34,9 @@ namespace rage {
             animation = assets.Find(definition.assetId, "");
         }
         if (!animation) {
+            if (!definition.drawPlaceholder) {
+                return; // The level draws its own stand-in until the art exists.
+            }
             const Rectangle bounds = Bounds();
             queue.Submit(Layer::Middle, [bounds, placeholder] {
                 if (placeholder) {
