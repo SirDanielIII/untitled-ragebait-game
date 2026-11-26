@@ -667,6 +667,7 @@ namespace rage {
     }
 
     void Level1::OnReset() {
+        timer.Reset();
         ResetTraffic();
         birdCooldown = 0;
         ResetStars();
@@ -697,6 +698,7 @@ namespace rage {
         RequestSound(playerSounds::death);
         ++collisionCount;
         Events().Notify({notification, static_cast<std::uint64_t>(collisionCount)});
+        timer.Reset();
     }
 
     void Level1::ResetStars() {
@@ -786,6 +788,7 @@ namespace rage {
     }
 
     void Level1::OnUpdate(float dt, const InputFrame& input) {
+        timer.Update(dt);
         dt = std::min(dt, 0.1f); // Match the physics engine maximum step.
         UpdatePigs(dt);
         if (GetPlayer().Grounded() || sliding) {
@@ -1204,5 +1207,8 @@ namespace rage {
         if (campusReached) DrawText("YOU MADE IT!", 6915, 1420, 15, {160, 237, 179, 255});
     }
 
+    void Level1::DrawHud(const Resources&) const {
+        timer.Draw(1420, 26, 44);
+    }
     std::unique_ptr<Level> MakeLevel1() { return std::make_unique<Level1>(); }
 }

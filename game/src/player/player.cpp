@@ -215,9 +215,18 @@ namespace rage {
             stamina -= config.jumpStaminaDrain * dt;
         }
         stamina = std::clamp(stamina, 0.0f, config.maxStamina);
-        if (stamina <= 0.0f) {
+        if (stamina <= 0.0f && climbing) {
             climbing = false;
             velocity.y = 0.0f;
         }
+    }
+    void Player::ApplyKnockback(Vector2 force) {
+        if (IsDead()) return;
+
+        velocity.x = force.x;
+        velocity.y = force.y;
+
+        grounded = false;
+        climbing = false;
     }
 }

@@ -24,6 +24,7 @@ namespace rage {
         float StaminaPercent() const { return stamina / 100.0f; }
         float StaminaPercent(float maxStamina) const { return maxStamina > 0.0f ? stamina / maxStamina : 0.0f; }
         void TakeDamage(int amount);
+        void ApplyKnockback(Vector2 force);
         void Kill();
         int GetHealth() const { return health; }
         int GetMaxHealth() const { return maxHealth; }

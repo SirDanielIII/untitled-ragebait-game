@@ -1,6 +1,7 @@
 #pragma once
 
 #include "levels/level.h"
+#include "levels/level_1/fake_timer.h"
 
 #include <array>
 #include <cstdint>
@@ -48,6 +49,7 @@ namespace rage {
         void OnUpdate(float dt, const InputFrame& input) override;
         void DrawPileup() const;
         void DrawWorld(const Resources& resources) const override;
+        void DrawHud(const Resources& resources) const override;
         float PlayerDuckBlend() const override { return duckBlend; }
         std::vector<Event> CreateEvents();
         void Respawn(const char* notification);
@@ -65,6 +67,7 @@ namespace rage {
         float birdCooldown = 0;
         bool crashImpact = false;
         std::array<FallingStar, 9> stars = {};
+        FakeTimer timer;
 
         Vector2 checkpoint = {};
         float collisionCooldown = 0.0f;

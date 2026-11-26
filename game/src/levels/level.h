@@ -136,6 +136,9 @@ namespace rage {
         virtual void DrawWorld(const Resources &) const {
         }
 
+        virtual void DrawHud(const Resources &) const {
+        }
+
         // Optional level-specific duck pose: 0 = standing, 1 = fully crouched.
         virtual float PlayerDuckBlend() const { return 0.0f; }
 

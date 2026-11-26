@@ -338,6 +338,7 @@ namespace rage {
         DrawStaminaBar(resources, config);
         EndMode2D();
         EndScissorMode();
+        DrawHud(resources);
         DrawTextFit(resources, definition.title, {40, 26, 1380, 44}, 36, definition.accent);
         DrawTextFit(resources, "A/D: move   Space: jump   W/UP: climb   Esc: pause   R: restart", {40, 88, 1480, 30}, 24, RAYWHITE);
         dialogue.Draw(resources, {40, 714, 1520, 162}, currentCue.speaker.c_str(), currentCue.fontSize,
