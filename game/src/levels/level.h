@@ -135,6 +135,9 @@ namespace rage {
         virtual void DrawWorld(const Resources &) const {
         }
 
+        virtual void DrawHud(const Resources &)const{
+        }
+
         // Queue this level's Game Data sprites (hazards, props, effects). Each is drawn on its
         // configured layer; Middle-layer sprites appear behind the player.
         // The base implementation queues the level's game objects;

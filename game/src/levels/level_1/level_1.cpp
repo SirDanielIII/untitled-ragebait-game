@@ -1,5 +1,5 @@
 #include "levels/level_1/level_1.h"
-
+#include "levels/level_1/fake_timer.h"
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -162,9 +162,11 @@ namespace rage {
         duckSeconds = 0.0f;
         ++collisionCount;
         Events().Notify({notification, static_cast<std::uint64_t>(collisionCount)});
+        timer.Reset(60.0f);
     }
 
     void Level1::OnUpdate(float dt, const InputFrame& input) {
+        timer.Update(dt);
         // Slide motion stays inside the level rather than changing shared movement code.
         if (sliding) {
             slideProgress = std::min(1.0f, slideProgress + dt / slideDuration);
@@ -422,5 +424,8 @@ namespace rage {
         if (campusReached) DrawText("YOU MADE IT!", 4900, 1252, 24, {160, 237, 179, 255});
     }
 
+     void Level1::DrawHud(const Resources&) const {
+        timer.Draw(1420, 26, 44);
+    }
     std::unique_ptr<Level> MakeLevel1() { return std::make_unique<Level1>(); }
 }
