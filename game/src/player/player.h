@@ -10,6 +10,7 @@ namespace rage {
     class Player {
     public:
         void Reset(Vector2 spawn);
+        void Bounce(Vector2 launchVelocity);
 
         void Update(float dt, const InputFrame &input, const GameConfig &config,
                     std::span<const Rectangle> platforms, Rectangle world,
@@ -34,6 +35,7 @@ namespace rage {
         Vector2 velocity = {};
         bool grounded = false;
         bool climbing = false;
+        float climbLockSeconds = 0.0f;
         float stamina = 100.0f;
         int maxHealth = 1;
         int health = 1;

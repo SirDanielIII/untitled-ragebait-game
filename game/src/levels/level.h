@@ -102,6 +102,7 @@ namespace rage {
         virtual std::string MusicTrack() const;
 
     protected:
+        void Restart();
         EventManager &Events() { return events; }
         Player &MutablePlayer() { return player; }
         // Event-facing object actions. These are the consistent

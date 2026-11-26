@@ -22,6 +22,11 @@ namespace rage {
     }
 
     void Level::Reset(const GameConfig &config) {
+        preferredTextSpeed = config.charactersPerSecond;
+        Restart();
+    }
+
+    void Level::Restart() {
         events.Reset();
         player.Reset(definition.spawn);
         respawnPoint = definition.spawn;
@@ -33,7 +38,6 @@ namespace rage {
         trackingPlayerSounds = false; // A restart is not a landing.
         playerFacing = Facing::Right;
         elapsedSeconds = 0;
-        preferredTextSpeed = config.charactersPerSecond;
         currentCue.id = 0;
         Say(definition.intro);
         OnReset();

@@ -23,9 +23,17 @@ namespace rage {
         velocity = {};
         grounded = false;
         climbing = false;
+        climbLockSeconds = 0.0f;
         stamina = 100.0f;
         health = maxHealth;
         moveInput = 0.0f;
+    }
+
+    void Player::Bounce(Vector2 launchVelocity) {
+        velocity = launchVelocity;
+        grounded = false;
+        climbing = false;
+        climbLockSeconds = 0.2f;
     }
 
     void Player::TakeDamage(int amount) {
@@ -88,7 +96,8 @@ namespace rage {
         // movement is disabled while climbing.
         const bool wasClimbing = climbing;
         climbing = false;
-        if (input.climb && stamina > 0.0f) {
+        climbLockSeconds = std::max(0.0f, climbLockSeconds - std::min(dt, 0.1f));
+        if (input.climb && climbLockSeconds == 0.0f && stamina > 0.0f) {
             const Rectangle body = Bounds();
             constexpr float contactDistance = 2.0f;
             for (const Rectangle platform: platforms) {
