@@ -12,7 +12,8 @@ namespace rage {
         void Reset(Vector2 spawn);
 
         void Update(float dt, const InputFrame &input, const GameConfig &config,
-                    std::span<const Rectangle> platforms, Rectangle world);
+                    std::span<const Rectangle> platforms, Rectangle world,
+                    std::span<const Rectangle> oneWayPlatforms = {});
 
         Rectangle Bounds() const { return {position.x, position.y, 30.0f, 44.0f}; }
         Vector2 Position() const { return position; }

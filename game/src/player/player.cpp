@@ -46,7 +46,8 @@ namespace rage {
     }
 
     void Player::Update(float dt, const InputFrame &input, const GameConfig &config,
-                        std::span<const Rectangle> platforms, Rectangle world) {
+                        std::span<const Rectangle> platforms, Rectangle world,
+                        std::span<const Rectangle> oneWayPlatforms) {
         if (!std::isfinite(dt) || dt <= 0.0f) return;
         if (IsDead()) return;
         moveInput = std::clamp(input.move, -1.0f, 1.0f);
@@ -55,6 +56,15 @@ namespace rage {
             const Rectangle body = Bounds();
             const float bottom = body.y + body.height;
             for (const Rectangle platform: platforms) {
+                if (body.x < platform.x + platform.width && body.x + body.width > platform.x
+                    && std::abs(bottom - platform.y) <= 0.01f) {
+                    position.y = platform.y - body.height;
+                    velocity.y = 0.0f;
+                    return true;
+                }
+            }
+            // Clouds count as support only when the feet already touch the top.
+            for (const Rectangle platform: oneWayPlatforms) {
                 if (body.x < platform.x + platform.width && body.x + body.width > platform.x
                     && std::abs(bottom - platform.y) <= 0.01f) {
                     position.y = platform.y - body.height;
@@ -139,6 +149,8 @@ namespace rage {
             if (position.x != beforeClamp) velocity.x = 0.0f;
             // Gravity is disabled while climbing.
             if (!climbing) velocity.y += config.gravity * step;
+            const float previousFeet = position.y + Bounds().height;
+            const bool descending = velocity.y > 0.0f;
             position.y += velocity.y * step;
             grounded = false;
             for (const auto platform: platforms) {
@@ -150,6 +162,27 @@ namespace rage {
                 } else if (velocity.y < 0.0f) {
                     position.y = platform.y + platform.height;
                     velocity.y = 0.0f;
+                }
+            }
+            // One-way platforms have no side or underside collision. Catch only
+            // downward crossings of their top, choosing the highest crossed top.
+            if (descending) {
+                const Rectangle body = Bounds();
+                const float currentFeet = body.y + body.height;
+                float landingY = currentFeet;
+                bool landed = false;
+                for (const Rectangle cloud: oneWayPlatforms) {
+                    if (body.x >= cloud.x + cloud.width || body.x + body.width <= cloud.x) continue;
+                    if (previousFeet <= cloud.y + 0.01f && currentFeet >= cloud.y
+                        && cloud.y <= landingY) {
+                        landingY = cloud.y;
+                        landed = true;
+                    }
+                }
+                if (landed) {
+                    position.y = landingY - body.height;
+                    velocity.y = 0.0f;
+                    grounded = true;
                 }
             }
             if (position.y < world.y) {

@@ -31,7 +31,7 @@ namespace rage {
             },
             {
                 .id = "road-checkpoint",
-                .condition = [this] { return GetPlayer().Position().x >= 1830.0f && !roadCheckpointReached; },
+                .condition = [this] { return pileupSettled && GetPlayer().Position().x >= 1800.0f && !roadCheckpointReached; },
                 .execute = [this] {
                     roadCheckpointReached = true;
                     checkpoint = {1800.0f, 1436.0f};
@@ -49,7 +49,7 @@ namespace rage {
                 .execute = [this] {
                     skyCheckpointReached = true;
                     checkpoint = {2820.0f, 784.0f};
-                    Say({.text = "Welcome to the sky. The telephone wires only bite sometimes.\n"
+                    Say({.text = "Welcome to the sky. Jump onto clouds when the wires flash yellow.\n"
                                  "Another checkpoint. You're getting suspiciously good at this.",
                          .effects = {.holdSeconds = 3.0f, .fadeSeconds = 1.0f}}, DialoguePolicy::Interrupt);
                 }
@@ -58,7 +58,7 @@ namespace rage {
                 .id = "pig-warning",
                 .condition = [this] { return GetPlayer().Position().x >= 3800.0f && GetPlayer().Position().x < 4600.0f && CanSay(); },
                 .execute = [this] {
-                    Say({.text = "Flying pigs: totally normal. Tap S to duck while one passes.\n"
+                    Say({.text = "Flying pigs: totally normal. Hold S to duck until it passes.\n"
                                  "Or stand tall. It can only improve your day.",
                          .effects = {.holdSeconds = 3.0f, .fadeSeconds = 1.0f}});
                 }
@@ -76,7 +76,7 @@ namespace rage {
             {
                 .id = "campus-arrival",
                 .condition = [this] {
-                    return slideFinished && GetPlayer().Position().x >= 5050.0f && !campusReached;
+                    return slideFinished && GetPlayer().Position().x >= 4970.0f && !campusReached;
                 },
                 .execute = [this] {
                     campusReached = true;
@@ -114,7 +114,7 @@ namespace rage {
                          .effects = {.holdSeconds = 1.4f, .fadeSeconds = 0.9f}}, DialoguePolicy::Interrupt);
                 },
                 .matchesNotification = [](const EventNotification& n) {
-                    return n.topic == "level1.bird_hit" || n.topic == "level1.star_hit"
+                    return n.topic == "level1.star_hit"
                         || n.topic == "level1.pig_hit" || n.topic == "level1.fall_hit";
                 },
                 .repeatable = true
