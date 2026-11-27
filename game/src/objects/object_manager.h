@@ -61,7 +61,7 @@ namespace rage {
 
         // Solid collision bounds, for the Player. Rebuilt on every call
         // so moving objects update their bounds as they move.
-        std::vector<Rectangle> SolidBounds() const;
+        std::vector<Rectangle> SolidBounds(CollisionType collision = CollisionType::Solid) const;
 
         // Objects of the given collision type overlapping bounds.
         // Used by Level for hazards (damage / respawn) and triggers

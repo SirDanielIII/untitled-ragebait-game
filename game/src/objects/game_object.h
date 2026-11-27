@@ -21,7 +21,8 @@ namespace rage {
         None,
         Solid,
         Hazard,
-        Trigger
+        Trigger,
+        OneWay // Land on the top only; pass through from below and the sides.
     };
 
     // Topics objects post to the level's EventManager (see
@@ -92,22 +93,24 @@ namespace rage {
     //   {.id = "spikes-1", .type = ObjectType::Hazard, .collision = CollisionType::Hazard, ...}
 
     // Something to stand on. An empty assetId ("") gives it collision but no
-    // sprite, for platforms the level draws itself.
+    // sprite, for platforms the level draws itself. active = false starts it
+    // switched off until the level calls ActivateObject (Level 1's wrecks).
     inline GameObjectDefinition SolidPlatform(const char *id, Rectangle bounds,
-                                              const char *assetId = "platform") {
+                                              const char *assetId = "platform", bool active = true) {
         return {
             .id = id,
             .type = ObjectType::Static,
             .collision = CollisionType::Solid,
             .position = {bounds.x, bounds.y},
             .size = {bounds.width, bounds.height},
-            .assetId = assetId
+            .assetId = assetId,
+            .active = active
         };
     }
 
     // Art only: draws assetId's sprite with no collision. For things whose
     // hits the level checks itself, or that its script moves (call
-    // SetPosition each frame; see Level 1's SyncObjects). No placeholder is
+    // SetPosition on it each frame from OnUpdate). No placeholder is
     // drawn while the art is missing, so a stand-in the level draws stays
     // visible until the Game Data row is added.
     inline GameObjectDefinition ArtObject(const char *id, Rectangle bounds, const char *assetId) {

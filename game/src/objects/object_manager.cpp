@@ -125,10 +125,10 @@ namespace rage {
         objects.clear();
     }
 
-    std::vector<Rectangle> ObjectManager::SolidBounds() const {
+    std::vector<Rectangle> ObjectManager::SolidBounds(CollisionType collision) const {
         std::vector<Rectangle> bounds;
         for (const auto &object : objects) {
-            if (object->IsActive() && object->Collision() == CollisionType::Solid) {
+            if (object->IsActive() && object->Collision() == collision) {
                 bounds.push_back(object->CollisionBounds());
             }
         }

@@ -208,6 +208,8 @@ void TestShortcuts() {
           platform.assetId == "platform" && platform.drawPlaceholder,
           "SolidPlatform built the wrong definition");
     Check(SolidPlatform("wire", {0, 0, 10, 10}, "").assetId.empty(), "SolidPlatform ignored an empty Asset ID");
+    Check(platform.active && !SolidPlatform("wreck", {0, 0, 10, 10}, "", false).active,
+          "SolidPlatform ignored the active setting");
     const auto art = ArtObject("car", {760, 1428, 108, 52}, "car");
     Check(art.collision == CollisionType::None && art.assetId == "car" && !art.drawPlaceholder &&
           art.size.x == 108 && art.size.y == 52, "ArtObject built the wrong definition");
@@ -219,24 +221,19 @@ void TestShortcuts() {
 }
 
 void TestLevel1ArtObjects() {
-    // Level 1 moves its cars with its own script. Their art-only objects must
-    // follow those hitboxes, add no collision, and go back on restart.
+    // Level 1 draws its own platforms, so none of them may pick up the shared
+    // "platform" art. Its sidewalk obstacles are art-only objects on their hitboxes.
     GameConfig config;
     auto level = CreateLevel(LevelId::Level1, config);
-    for (const char *id : {"trash-can", "hydrant", "car-1", "car-2", "car-3", "bird-1", "bird-2",
-                           "flying-pig", "chicken"}) {
-        const auto *object = level->Objects().Get(id);
-        Check(object && object->Collision() == CollisionType::None && !object->AssetId().empty(),
-              "Level 1 art object is missing, collides, or has no Asset ID");
+    for (const auto &object : level->Objects().Objects()) {
+        Check(object->AssetId() != "platform", "A Level 1 platform picked up the shared platform art");
     }
-    const float carStart = level->Objects().Get("car-1")->Position().x;
-    const float birdStart = level->Objects().Get("bird-1")->Position().x;
-    level->Update(0.5f, {}, config);
-    Check(level->Objects().Get("car-1")->Position().x < carStart &&
-          level->Objects().Get("bird-1")->Position().x < birdStart,
-          "Level 1 art objects did not follow the scripted cars and birds");
-    level->Update(0, {.resetPlayer = true}, config);
-    Check(level->Objects().Get("car-1")->Position().x == carStart, "Restart did not move the car art back");
+    const auto *can = level->Objects().Get("trash-can");
+    const auto *hydrant = level->Objects().Get("hydrant");
+    Check(can && hydrant && can->Collision() == CollisionType::None &&
+          hydrant->Collision() == CollisionType::None && can->AssetId() == "trash_can" &&
+          hydrant->AssetId() == "hydrant" && can->Position().x == 260 && hydrant->Position().x == 445,
+          "Level 1's trash can or hydrant art object is missing, collides, or is misplaced");
 }
 }  // namespace
 

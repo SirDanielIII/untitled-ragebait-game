@@ -24,6 +24,7 @@ namespace rage {
         bool mouseMoved = false;
         bool click = false;
         bool mouseDown = false;
+        bool duck = false; // Held S / Down, independent of menu key presses.
     };
 
     inline InputFrame CaptureInput(Vector2 mouse) {
@@ -38,6 +39,7 @@ namespace rage {
         input.up = IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W);
         input.climb = IsKeyDown(KEY_W) || IsKeyDown(KEY_UP);
         input.down = IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S) || IsKeyPressed(KEY_TAB);
+        input.duck = IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN);
         input.decrease = IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A);
         input.increase = IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D);
         input.minimum = IsKeyPressed(KEY_HOME);

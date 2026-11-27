@@ -90,7 +90,11 @@ namespace rage {
                 Enter(ScreenId::Paused);
                 return true;
             }
-            if (activeLevel) activeLevel->Update(dt, input, config);
+            if (activeLevel) {
+                activeLevel->Update(dt, input, config);
+                if (activeLevel->IsComplete() && activeLevel->Definition().id == LevelId::Level1)
+                    Apply({ActionKind::StartLevel, static_cast<int>(LevelId::Level2)});
+            }
             return false;
         }
         if (screen == ScreenId::Paused && (input.pause || input.back)) {

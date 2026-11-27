@@ -129,7 +129,7 @@ Each level's code is in `game/src/levels/level_<number>/level_<number>.cpp`. Pic
 | The thing... | Use | Drawing code needed |
 |---|---|---|
 | sits there, collides or is a hazard (platform, furniture, trash can) | an entry in `.objects` with an `.assetId` | none |
-| is moved by the level's own script (Level 1's cars and birds) | an art-only object in `.objects`, moved onto the script's hitbox each frame | one line per thing in the level's `SyncObjects` |
+| is moved or checked by the level's own script (Level 1's trash can and hydrant) | an `ArtObject` in `.objects`, moved onto the script's hitbox if it moves | none if it stays still; one `SetPosition` line if it moves |
 | is pure decoration with no object (a poster, a sign) | a `SubmitSprites` override | a few lines |
 
 Don't draw art with `DrawRectangle`/`DrawCircle` in `DrawWorld`: shapes there can't be swapped for sprites. `DrawWorld` is for text, road markings and temporary stand-ins.
@@ -156,14 +156,16 @@ The box is in world pixels: x/y is its top-left, and a 48×32 PNG is 96×64 at 2
 
 ### Things the level script moves
 
-Some levels move things with their own code instead of the object system (Level 1 keeps its cars in `traffic` and checks their hits itself). Give each one an `ArtObject`, and copy the script's rectangle onto it every frame. Level 1 does this in its `SyncObjects()`:
+Some levels handle things with their own code instead of the object system: Level 1 checks the trash can and hydrant hits itself, in `CheckHazards`. Give each one an `ArtObject` on the same rectangle as its hitbox:
 
 ```cpp
-// In .objects, after the existing entries:
-ArtObject("car-1", {760, 1428, 108, 52}, "car"),   // no collision, no placeholder
+ArtObject("trash-can", trashCan, "trash_can"),   // in .objects: no collision, no placeholder
+```
 
-// In SyncObjects(), called at the end of OnReset and OnUpdate:
-place("car-1", traffic[0].bounds);
+If the script also **moves** it, copy the script's rectangle onto the object every frame, at the end of `OnUpdate` and `OnReset`:
+
+```cpp
+if (auto *car = Objects().Get("car-1")) car->SetPosition({carBounds.x, carBounds.y});
 ```
 
 Art-only objects use `.drawPlaceholder = false`, so until the row exists nothing is drawn and the old `DrawWorld` shape stays visible. Once the row exists the sprite draws on top of it; then delete that shape from `DrawWorld`.
