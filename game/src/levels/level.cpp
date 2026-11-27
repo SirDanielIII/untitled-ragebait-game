@@ -11,7 +11,7 @@
 namespace rage {
     Level::Level(const LevelDefinition &definition) : definition(definition) {
         camera.offset = {worldViewport.width / 2, worldViewport.y + worldViewport.height / 2};
-        camera.zoom = 2.0f;
+        camera.zoom = definition.cameraZoom;
         // Objects are initialised when the level loads, from its
         // definitions. Leaving a level destroys the Level (and this
         // manager with it), so no object can outlive its level.

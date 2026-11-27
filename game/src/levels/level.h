@@ -65,6 +65,7 @@ namespace rage {
         // collision geometry comes from these, not from artwork.
         // (Previously a list of platform rectangles; see objects/.)
         std::vector<GameObjectDefinition> objects;
+        float cameraZoom = 2.0f;
     };
 
     class Level {

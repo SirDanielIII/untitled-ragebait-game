@@ -61,10 +61,10 @@ namespace rage::art {
                 DrawRectangleLines(410, y + 35, 180, 90, theme::border);
             }
         } else {
-            DrawRectangle(1200, 300, 280, 350, {52, 49, 65, 255});
-            DrawRectangleLines(1200, 300, 280, 350, accent);
-            DrawRectangle(1300, 530, 70, 120, theme::background);
-            Entity(resources, {1020, 420, 140, 180});
+            const float hallX = world.width - 400;
+            DrawRectangle(hallX, 300, 280, 350, {52, 49, 65, 255});
+            DrawRectangleLines(hallX, 300, 280, 350, accent);
+            DrawRectangle(hallX + 100, 530, 70, 120, theme::background);
         }
     }
 
