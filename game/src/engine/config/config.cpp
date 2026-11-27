@@ -15,36 +15,34 @@ namespace rage {
         struct PlayerSetting {
             std::string_view key;
             float GameConfig::*field;
-            float low;
-            float high;
         };
 
-        // One registry keeps player tuning validation and serialization in sync.
+        // One registry keeps player tuning and serialization in sync.
         constexpr PlayerSetting playerSettings[] = {
-            {"move_speed", &GameConfig::moveSpeed, 1, 1000},
-            {"ground_acceleration", &GameConfig::groundAcceleration, 1, 20000},
-            {"counter_strafe_acceleration", &GameConfig::counterStrafeAcceleration, 1, 20000},
-            {"ground_friction", &GameConfig::groundFriction, 0, 20000},
-            {"start_speed", &GameConfig::startSpeed, 0, 800},
-            {"jump_speed", &GameConfig::jumpSpeed, 1, 1500},
-            {"gravity", &GameConfig::gravity, 1, 4000},
-            {"climb_speed", &GameConfig::climbSpeed, 1, 800},
-            {"climb_contact_distance", &GameConfig::climbContactDistance, 0, 20},
-            {"bounce_climb_lock", &GameConfig::bounceClimbLock, 0, 5},
-            {"standing_width", &GameConfig::standingWidth, 1, 200},
-            {"standing_height", &GameConfig::standingHeight, 1, 200},
-            {"crouch_height_multiplier", &GameConfig::crouchHeightMultiplier, 0.1f, 1},
-            {"crouch_speed_multiplier", &GameConfig::crouchSpeedMultiplier, 0.01f, 1},
-            {"crouch_jump_multiplier", &GameConfig::crouchJumpMultiplier, 1, 5},
-            {"max_stamina", &GameConfig::maxStamina, 1, 10000},
-            {"climb_stamina_drain", &GameConfig::climbStaminaDrain, 0, 10000},
-            {"jump_stamina_cost", &GameConfig::jumpStaminaCost, 0, 10000},
-            {"crouch_jump_stamina_cost", &GameConfig::crouchJumpStaminaCost, 0, 10000},
-            {"crouch_stamina_drain", &GameConfig::crouchStaminaDrain, 0, 10000},
-            {"stamina_regen", &GameConfig::staminaRegen, 0, 10000},
-            {"low_stamina_threshold", &GameConfig::lowStaminaThreshold, 0, 1},
-            {"exhaustion_recovery_threshold", &GameConfig::exhaustionRecoveryThreshold, 0, 1},
-            {"exhausted_speed_multiplier", &GameConfig::exhaustedSpeedMultiplier, 0.01f, 1},
+            {"move_speed", &GameConfig::moveSpeed},
+            {"ground_acceleration", &GameConfig::groundAcceleration},
+            {"counter_strafe_acceleration", &GameConfig::counterStrafeAcceleration},
+            {"ground_friction", &GameConfig::groundFriction},
+            {"start_speed", &GameConfig::startSpeed},
+            {"jump_speed", &GameConfig::jumpSpeed},
+            {"gravity", &GameConfig::gravity},
+            {"climb_speed", &GameConfig::climbSpeed},
+            {"climb_contact_distance", &GameConfig::climbContactDistance},
+            {"bounce_climb_lock", &GameConfig::bounceClimbLock},
+            {"standing_width", &GameConfig::standingWidth},
+            {"standing_height", &GameConfig::standingHeight},
+            {"crouch_height_multiplier", &GameConfig::crouchHeightMultiplier},
+            {"crouch_speed_multiplier", &GameConfig::crouchSpeedMultiplier},
+            {"crouch_jump_multiplier", &GameConfig::crouchJumpMultiplier},
+            {"max_stamina", &GameConfig::maxStamina},
+            {"climb_stamina_drain", &GameConfig::climbStaminaDrain},
+            {"jump_stamina_cost", &GameConfig::jumpStaminaCost},
+            {"crouch_jump_stamina_cost", &GameConfig::crouchJumpStaminaCost},
+            {"crouch_stamina_drain", &GameConfig::crouchStaminaDrain},
+            {"stamina_regen", &GameConfig::staminaRegen},
+            {"low_stamina_threshold", &GameConfig::lowStaminaThreshold},
+            {"exhaustion_recovery_threshold", &GameConfig::exhaustionRecoveryThreshold},
+            {"exhausted_speed_multiplier", &GameConfig::exhaustedSpeedMultiplier},
         };
 
         std::string Trim(std::string text) {
@@ -53,19 +51,19 @@ namespace rage {
             return text.substr(first, text.find_last_not_of(" \r\n") - first + 1);
         }
 
-        bool Number(const std::string &text, int &output, int low, int high) {
+        bool Number(const std::string &text, int &output) {
             int value = 0;
             const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
-            if (result.ec != std::errc{} || result.ptr != text.data() + text.size() || value < low || value > high) return false;
+            if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) return false;
             output = value;
             return true;
         }
 
-        bool Number(const std::string &text, float &output, float low, float high) {
+        bool Number(const std::string &text, float &output) {
             std::istringstream input(text);
             input.imbue(std::locale::classic());
             float value = 0.0f;
-            if (!(input >> value) || !input.eof() || !std::isfinite(value) || value < low || value > high) return false;
+            if (!(input >> value) || !input.eof() || !std::isfinite(value)) return false;
             output = value;
             return true;
         }
@@ -124,25 +122,25 @@ namespace rage {
                 continue;
             }
             bool accepted = false;
-            if (fullKey == "window.width") accepted = Number(value, values.windowWidth, 640, 3840);
-            else if (fullKey == "window.height") accepted = Number(value, values.windowHeight, 480, 2160);
-            else if (fullKey == "window.target_fps") accepted = Number(value, values.targetFps, minTargetFps, maxTargetFps);
+            if (fullKey == "window.width") accepted = Number(value, values.windowWidth);
+            else if (fullKey == "window.height") accepted = Number(value, values.windowHeight);
+            else if (fullKey == "window.target_fps") accepted = Number(value, values.targetFps);
             else if (fullKey == "window.unlimited_fps") accepted = Boolean(value, values.unlimitedFps);
             else if (fullKey == "window.show_fps") accepted = Boolean(value, values.showFps);
-            else if (fullKey == "audio.master_volume") accepted = Number(value, values.masterVolume, 0.0f, 1.0f);
+            else if (fullKey == "audio.master_volume") accepted = Number(value, values.masterVolume);
             else if (fullKey == "audio.muted") accepted = Boolean(value, values.muted);
-            else if (fullKey == "audio.music_volume") accepted = Number(value, values.musicVolume, 0.0f, 1.0f);
-            else if (fullKey == "audio.sfx_volume") accepted = Number(value, values.sfxVolume, 0.0f, 1.0f);
+            else if (fullKey == "audio.music_volume") accepted = Number(value, values.musicVolume);
+            else if (fullKey == "audio.sfx_volume") accepted = Number(value, values.sfxVolume);
             else if (section == "player") {
                 for (const auto &setting: playerSettings) {
                     if (setting.key == key) {
-                        accepted = Number(value, values.*(setting.field), setting.low, setting.high);
+                        accepted = Number(value, values.*(setting.field));
                         break;
                     }
                 }
             }
-            else if (fullKey == "dialogue.characters_per_second") accepted = Number(value, values.charactersPerSecond, 0.0f, 240.0f);
-            else if (fullKey == "session.last_level") accepted = Number(value, values.lastLevel, 0, 3);
+            else if (fullKey == "dialogue.characters_per_second") accepted = Number(value, values.charactersPerSecond);
+            else if (fullKey == "session.last_level") accepted = Number(value, values.lastLevel);
             if (!accepted) reject();
         }
         if (file.bad()) {

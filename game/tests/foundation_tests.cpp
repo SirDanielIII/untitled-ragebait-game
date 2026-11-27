@@ -86,9 +86,6 @@ void TestSliders()
     game.Update(0, drag);
     Check(config.masterVolume > 0.9f, "Slider capture was lost when settings changed");
     game.Update(0, {});
-    game.Update(0, ClickSlider(game, ActionKind::SetDialogueSpeed, 0.5f));
-    game.Update(0, {});
-    Check(config.charactersPerSecond == 120, "Dialogue slider did not use its independent range");
     game.Update(0, ClickSlider(game, ActionKind::SetTargetFps, 0.5f));
     Check(config.targetFps == 195, "FPS slider did not apply its range");
     drag.mouse = {2000, 100};
@@ -172,7 +169,7 @@ void TestConfig()
     }
     Check(!store.Load(file), "Malformed config should report ignored values");
     Check(store.values.windowWidth == 1280 && store.values.targetFps == 120 && store.values.showFps, "Valid display settings were lost");
-    Check(store.values.moveSpeed == 310 && store.values.gravity == GameConfig{}.gravity && store.values.jumpSpeed == GameConfig{}.jumpSpeed, "Player config fallback failed");
+    Check(store.values.moveSpeed == 310 && store.values.gravity == GameConfig{}.gravity && store.values.jumpSpeed == -3, "Player config fallback failed");
     Check(Near(store.values.masterVolume, 0.7f, 0.001f) && !store.values.muted && store.values.charactersPerSecond == 0 && store.values.lastLevel == 3, "Valid audio/dialogue/session config failed");
     store.values.unlimitedFps = true;
     store.values.targetFps = maxTargetFps;
@@ -186,10 +183,10 @@ void TestConfig()
         output << "window:\n  width: 900\n  width: 1000\n  height: 99999\n\tbad: true\n  width: 1100\n"
                << "audio:\n  master_volume: nan\nunknown:\n  move_speed: 600\n";
     }
-    Check(!reloaded.Load(file) && reloaded.values.windowWidth == 900 && reloaded.values.windowHeight == 900 &&
+    Check(!reloaded.Load(file) && reloaded.values.windowWidth == 900 && reloaded.values.windowHeight == 99999 &&
           reloaded.values.moveSpeed == 310 && Near(reloaded.values.masterVolume, 0.7f, 0.001f),
           "Invalid or duplicate settings replaced valid values");
-    std::cout << "PASS: defaults, valid/malformed YAML subset, range checks and preferences round trip\n";
+    std::cout << "PASS: defaults, valid/malformed YAML subset and preferences round trip\n";
 }
 
     void TestPlayerHealth()

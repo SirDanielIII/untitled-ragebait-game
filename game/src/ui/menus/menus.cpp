@@ -99,23 +99,20 @@ namespace rage {
             },
             Button{"UNLIMITED FPS", {ActionKind::ToggleUnlimitedFps}, {110, 484, 390, 54}, mint, ButtonStyle::Checkbox, config.unlimitedFps, 25},
             Button{"SHOW FPS", {ActionKind::ToggleFps}, {110, 564, 390, 54}, mint, ButtonStyle::Checkbox, config.showFps, 25},
-            SliderItem{
-                "TYPEWRITER SPEED", ActionKind::SetDialogueSpeed,
-                Slider({605, 385, 390, 52}, 0, 240, 5, config.charactersPerSecond), " chars/sec", 1, "Instant"
-            },
-            // The Audio column: the checkbox sits in the header row so three sliders fit below it.
-            Button{"AUDIO ENABLED", {ActionKind::ToggleMute}, {1100, 236, 390, 54}, mint, ButtonStyle::Checkbox, !config.muted, 25},
+            // The Audio column takes the former dialogue column; the checkbox sits in the header row
+            // so three sliders fit below it. The right column is reserved for the controls list.
+            Button{"AUDIO ENABLED", {ActionKind::ToggleMute}, {605, 236, 390, 54}, mint, ButtonStyle::Checkbox, !config.muted, 25},
             SliderItem{
                 "MASTER VOLUME", ActionKind::SetVolume,
-                Slider({1100, 388, 390, 52}, 0, 1, 0.01f, config.masterVolume), "%", 100, {}
+                Slider({605, 388, 390, 52}, 0, 1, 0.01f, config.masterVolume), "%", 100, {}
             },
             SliderItem{
                 "MUSIC", ActionKind::SetMusicVolume,
-                Slider({1100, 538, 390, 52}, 0, 1, 0.01f, config.musicVolume), "%", 100, {}
+                Slider({605, 538, 390, 52}, 0, 1, 0.01f, config.musicVolume), "%", 100, {}
             },
             SliderItem{
                 "SOUND EFFECTS", ActionKind::SetSfxVolume,
-                Slider({1100, 688, 390, 52}, 0, 1, 0.01f, config.sfxVolume), "%", 100, {}
+                Slider({605, 688, 390, 52}, 0, 1, 0.01f, config.sfxVolume), "%", 100, {}
             }
         };
     }
@@ -124,20 +121,17 @@ namespace rage {
         using namespace theme;
         art::MenuBackdrop(resources, ArtId::Settings);
         DrawTextFit(resources, "SETTINGS", {270, 65, 1200, 44}, 44, paper);
-        DrawTextFit(resources, "Adjust display, dialogue, and audio settings.", {272, 123, 1200, 23}, 23, muted);
+        DrawTextFit(resources, "Adjust display and audio settings.", {272, 123, 1200, 23}, 23, muted);
         for (int i = 0; i < 3; ++i) {
             const float x = 70.0f + i * 495;
             DrawRectangleRec({x, 214, 460, 540}, panel);
             DrawRectangleRec({x, 214, 460, 4}, i == 1 ? gold : mint);
-            // The Audio column's "AUDIO ENABLED" checkbox doubles as its heading.
-            if (i < 2) DrawTextFit(resources, i == 0 ? "DISPLAY" : "DIALOGUE", {x + 40, 246, 390, 24}, 24, muted);
+            // The display column gets a heading; the audio column's "AUDIO ENABLED" checkbox
+            // doubles as its heading, and the right column is reserved for the controls list.
+            if (i == 0) DrawTextFit(resources, "DISPLAY", {x + 40, 246, 390, 24}, 24, muted);
         }
         DrawTextFit(resources, config.unlimitedFps ? "ACTIVE: UNLIMITED" : "ACTIVE: CAPPED", {110, 653, 390, 22}, 22, mint);
         DrawTextFit(resources, "Unlimited bypasses the saved cap.", {110, 682, 390, 19}, 19, muted);
-        DrawTextFit(resources, "Text reveal speed.", {605, 492, 390, 23}, 23, gold);
-        DrawTextFit(resources, "Set to 0 for instant text.", {605, 541, 390, 22}, 22, paper);
-        DrawTextFit(resources, "ENTER reveals a message in play.", {605, 582, 390, 20}, 20, muted);
-        DrawTextFit(resources, "T replays the current message.", {605, 617, 390, 20}, 20, muted);
         DrawTextFit(resources, status.c_str(), {74, 764, 1200, 22}, 22, mint);
         DrawLine(70, 819, 1530, 819, border);
         DrawTextFit(resources, "DRAG / LEFT / RIGHT: ADJUST   UP / DOWN / TAB: SELECT   HOME / END: LIMITS   ESC: BACK",

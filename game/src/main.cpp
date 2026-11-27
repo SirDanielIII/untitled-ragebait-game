@@ -111,8 +111,7 @@ namespace rage {
         Apply(*action);
         // Continuous slider changes are silent; ordinary button actions play one click.
         return action->kind != ActionKind::SetVolume && action->kind != ActionKind::SetMusicVolume
-               && action->kind != ActionKind::SetSfxVolume && action->kind != ActionKind::SetDialogueSpeed
-               && action->kind != ActionKind::SetTargetFps;
+               && action->kind != ActionKind::SetSfxVolume && action->kind != ActionKind::SetTargetFps;
     }
 
     void Game::Apply(Action action) {
@@ -159,10 +158,6 @@ namespace rage {
                 return;
             case ActionKind::SetSfxVolume:
                 config.sfxVolume = std::clamp(action.scalar, 0.0f, 1.0f);
-                settingsDirty = true;
-                return;
-            case ActionKind::SetDialogueSpeed:
-                config.charactersPerSecond = std::clamp(action.scalar, 0.0f, 240.0f);
                 settingsDirty = true;
                 return;
         }
