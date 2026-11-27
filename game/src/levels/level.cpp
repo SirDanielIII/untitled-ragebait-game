@@ -23,6 +23,7 @@ namespace rage {
 
     void Level::Reset(const GameConfig &config) {
         preferredTextSpeed = config.charactersPerSecond;
+        player.Reset(definition.spawn, config);
         Restart();
     }
 
@@ -73,7 +74,9 @@ namespace rage {
         // the player moves, and before events.Update(), so the
         // notifications they post are visible to events this update.
         objects.UpdateAll(dt);
-        player.Update(dt, input, config, objects.SolidBounds(), definition.world,
+        InputFrame playerInput = input;
+        playerInput.climb = input.climb && CanClimb();
+        player.Update(dt, playerInput, config, objects.SolidBounds(), definition.world,
                       objects.SolidBounds(CollisionType::OneWay));
         UpdatePlayerAnimation(dt);
         UpdatePlayerSounds(dt);
@@ -256,7 +259,8 @@ namespace rage {
         const auto velocity = player.Velocity();
         if (velocity.x < 0) playerFacing = Facing::Left;
         else if (velocity.x > 0) playerFacing = Facing::Right;
-        if (!player.Grounded()) playerAnimator.SetState(velocity.y < 0 ? "jump" : "fall");
+        if (player.Crouching()) playerAnimator.SetState(velocity.x != 0 ? "crouch_walk" : "crouch");
+        else if (!player.Grounded()) playerAnimator.SetState(velocity.y < 0 ? "jump" : "fall");
         else playerAnimator.SetState(velocity.x != 0 ? "walk" : "idle");
         playerAnimator.Update(dt);
     }
@@ -266,26 +270,28 @@ namespace rage {
         const auto &state = playerAnimator.State();
         // Missing states fall back so a half-finished set of animations still shows something.
         const AnimationData *animation = assets.Find(playerAssetId, state);
+        if (!animation && state == "crouch_walk") animation = assets.Find(playerAssetId, "crouch");
+        const bool hasCrouchAnimation = player.Crouching() && animation;
         if (!animation && state == "fall") animation = assets.Find(playerAssetId, "jump");
         if (!animation) animation = assets.Find(playerAssetId, "idle");
         if (!animation) animation = assets.Find(playerAssetId, "");
         const Rectangle body = player.Bounds();
-        const float duck = std::clamp(PlayerDuckBlend(), 0.0f, 1.0f);
-        if (duck > 0.0f) {
+        if (player.Crouching() && !hasCrouchAnimation) {
             const Vector2 feet = SnapToPixels({body.x + body.width / 2, body.y + body.height});
-            // Compress the existing sprite around its feet, not its centre. No new art required.
-            // The same interpolation that lowers the pig hitbox drives the pose.
+            const Rectangle standing = player.StandingBounds();
+            const float heightScale = body.height / standing.height;
+            // Until crouch art is supplied, compress standing art to match the hitbox.
             queue.Submit(animation ? animation->layer : Layer::Middle,
-                         [this, &resources, &assets, animation, body, feet, duck] {
+                         [this, &resources, &assets, animation, standing, feet, heightScale] {
                 rlPushMatrix();
                 rlTranslatef(feet.x, feet.y, 0.0f);
-                rlScalef(1.0f + 0.10f * duck, 1.0f - 0.72f * duck, 1.0f);
+                rlScalef(1.0f, heightScale, 1.0f);
                 rlTranslatef(-feet.x, -feet.y, 0.0f);
                 if (animation) {
                     assets.Draw(*animation, playerAnimator.Frame(*animation), feet, playerFacing,
                                 [&resources](Rectangle b, bool) { art::Student(resources, b); });
                 } else {
-                    art::Student(resources, body);
+                    art::Student(resources, standing);
                 }
                 rlPopMatrix();
             });
@@ -306,15 +312,15 @@ namespace rage {
     }
 
     void Level::UpdateCamera() {
-        const auto position = player.Position();
+        const auto body = player.StandingBounds();
         const auto world = definition.world;
         auto follow = [](float target, float start, float length, float halfView) {
             if (length <= halfView * 2) return start + length / 2;
             return std::clamp(target, start + halfView, start + length - halfView);
         };
         camera.target = SnapToPixels({
-            follow(position.x + 15, world.x, world.width, worldViewport.width / (2 * camera.zoom)),
-            follow(position.y + 22, world.y, world.height, worldViewport.height / (2 * camera.zoom))
+            follow(body.x + body.width / 2, world.x, world.width, worldViewport.width / (2 * camera.zoom)),
+            follow(body.y + body.height / 2, world.y, world.height, worldViewport.height / (2 * camera.zoom))
         });
     }
 
@@ -340,15 +346,17 @@ namespace rage {
         EndScissorMode();
         DrawHud(resources);
         DrawTextFit(resources, definition.title, {40, 26, 1380, 44}, 36, definition.accent);
-        DrawTextFit(resources, "A/D: move   Space: jump   W/UP: climb   Esc: pause   R: restart", {40, 88, 1480, 30}, 24, RAYWHITE);
+        const char *controls = CanClimb()
+            ? "A/D: move   Hold Space: jump   S/Down: crouch   W/UP: climb   Esc: pause   R: restart"
+            : "A/D: move   Hold Space/W/Up: jump   S/Down: crouch   Esc: pause   R: restart";
+        DrawTextFit(resources, controls, {40, 88, 1480, 30}, 24, RAYWHITE);
         dialogue.Draw(resources, {40, 714, 1520, 162}, currentCue.speaker.c_str(), currentCue.fontSize,
                       currentCue.allowSkip, currentCue.allowReplay);
         DrawTextFit(resources, definition.description, {40, 678, 1500, 28}, 22, Color{173, 165, 190, 255});
     }
 
     void Level::DrawStaminaBar(const Resources &resources, const GameConfig &config) const {
-        // Stamina bar above the player: green above 60%, yellow above
-        // 30%, red below that, on a dark background.
+        // The red bar shares the movement slowdown's configurable low-stamina threshold.
         (void)resources;
         const Rectangle playerBounds = player.Bounds();
         const float barWidth = 40.0f;
@@ -357,7 +365,7 @@ namespace rage {
         const float barY = playerBounds.y - 12.0f;
         const float staminaPercent = player.StaminaPercent(config.maxStamina);
         Color staminaColor = GREEN;
-        if (staminaPercent < 0.3f) {
+        if (player.LowStamina(config)) {
             staminaColor = RED;
         } else if (staminaPercent < 0.6f) {
             staminaColor = YELLOW;

@@ -66,7 +66,8 @@ namespace rage {
                 },
                 .execute = [this] {
                     const auto cloud = Objects().Get("cloud-1")->Position();
-                    checkpoint = {cloud.x, cloud.y - GetPlayer().Bounds().height};
+                    // Respawns stand up, even when this checkpoint was reached crouching.
+                    checkpoint = {cloud.x, cloud.y - GetPlayer().StandingBounds().height};
                     Say({.text = "Checkpoint saved. At least the clouds aren't plugged in.",
                          .effects = {.holdSeconds = 2.0f, .fadeSeconds = 1.0f}}, DialoguePolicy::Interrupt);
                 }

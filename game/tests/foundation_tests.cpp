@@ -14,6 +14,7 @@ void TestAssetRendering();
 void TestAudioData();
 void TestAudioPlayback();
 void TestObjects();
+void TestPlayerMovement();
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
 void TestWindowResize(void* handle);
 #endif
@@ -160,7 +161,7 @@ void TestConfig()
     TestDirectory directory;
     ConfigStore store;
     Check(store.values.windowWidth == 1600 && store.values.windowHeight == 900, "Default resolution is incorrect");
-    Check(!store.Load(directory.path / "missing.yaml") && store.values.moveSpeed == 260, "Missing config defaults failed");
+    Check(!store.Load(directory.path / "missing.yaml") && store.values.moveSpeed == GameConfig{}.moveSpeed, "Missing config defaults failed");
     const auto file = directory.path / "input.yaml";
     {
         std::ofstream output(file);
@@ -171,7 +172,7 @@ void TestConfig()
     }
     Check(!store.Load(file), "Malformed config should report ignored values");
     Check(store.values.windowWidth == 1280 && store.values.targetFps == 120 && store.values.showFps, "Valid display settings were lost");
-    Check(store.values.moveSpeed == 310 && store.values.gravity == 1500 && store.values.jumpSpeed == 620, "Player config fallback failed");
+    Check(store.values.moveSpeed == 310 && store.values.gravity == GameConfig{}.gravity && store.values.jumpSpeed == GameConfig{}.jumpSpeed, "Player config fallback failed");
     Check(Near(store.values.masterVolume, 0.7f, 0.001f) && !store.values.muted && store.values.charactersPerSecond == 0 && store.values.lastLevel == 3, "Valid audio/dialogue/session config failed");
     store.values.unlimitedFps = true;
     store.values.targetFps = maxTargetFps;
@@ -227,7 +228,8 @@ void TestMovement()
     player.Update(1.0f / 60, {}, config, platforms, world);
     Check(player.Grounded(), "Initial floor contact failed");
     for (int i = 0; i < 60; ++i) player.Update(1.0f / 60, right, config, platforms, world);
-    Check(Near(player.Position().x, 338.6f, 0.5f), "Movement does not accelerate toward moveSpeed");
+    Check(player.Position().x > 100 + config.moveSpeed * 0.9f && player.Position().x < 100 + config.moveSpeed
+          && Near(player.Velocity().x, config.moveSpeed), "Movement does not accelerate toward moveSpeed");
     Player slowFrames;
     slowFrames.Reset({100, 606});
     for (int i = 0; i < 30; ++i) slowFrames.Update(1.0f / 30, right, config, platforms, world);
@@ -370,6 +372,7 @@ int RunSelfTests()
         TestConfig();
         TestMovement();
         TestClimbingAndStamina();
+        TestPlayerMovement();
         TestPlayerHealth();
         TestSliders();
         TestSession();
@@ -450,6 +453,11 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
               "Smoke test could not open a level for rendering");
         Frame(0, {.completeDialogue = true});
         capture("stage_" + std::to_string(static_cast<int>(level.id)));
+        if (level.id == LevelId::Level1) {
+            Frame(1.0f / 60, {.duck = true});
+            Check(game.ActiveLevel()->GetPlayer().Crouching(), "Rendered crouch lost its shared player state");
+            capture("stage_1_crouch");
+        }
         Frame(0, {.pause = true});
         capture("pause");
         click(ActionKind::OpenLevels);

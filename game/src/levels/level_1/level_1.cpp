@@ -9,9 +9,9 @@
 
 namespace rage {
     namespace {
-        // All coordinates use world pixels. The player's collider is 30x44.
-        // Default movement (260 px/s) and jump (620 px/s, gravity 1500) allow
-        // about 128 px of jump height. Ledges in the climb are 78-102 px apart.
+        // All coordinates use world pixels. Default standing/crouching colliders are 30x44/30x22.
+        // Default jumps reach about 96 px, or 138 px from crouch for taller ledges.
+        // Movement tuning lives in config.yaml; wall climbing is exclusive to Level 2.
         constexpr float floorY = 1480.0f;
         constexpr float collisionGraceSeconds = 0.35f;
         constexpr float roadStart = 580.0f;
@@ -87,7 +87,6 @@ namespace rage {
                 DrawCircleV({puff.x - 2, puff.y - 4}, radius * 0.72f, Fade(RAYWHITE, 1 - t));
             }
         }
-        constexpr float duckHeight = 18.0f;
         constexpr float pigScale = 1.35f;
         // World-space flight heights for the upper, middle, and lower cloud routes.
         constexpr std::array<float, 3> pigRouteY{475, 620, 750};
@@ -110,7 +109,6 @@ namespace rage {
                         radius * 0.72f, Fade({163, 221, 64, 255}, 0.87f * opacity));
         }
 
-        constexpr float duckTransition = 0.09f;
         constexpr std::array<Rectangle, 3> refuges{{
             {3975, 705, 96, 16},
             {4260, 690, 96, 16},
@@ -676,7 +674,6 @@ namespace rage {
         pigSpawnSeconds = 1.0f;
         checkpoint = Definition().spawn;
         collisionCooldown = 0.0f;
-        duckBlend = 0.0f;
         slideProgress = 0.0f;
         collisionCount = 0;
         roadCheckpointReached = false;
@@ -690,7 +687,6 @@ namespace rage {
         if (pileupStarted && !crashImpact) ResetTraffic();
         MutablePlayer().Reset(checkpoint);
         collisionCooldown = collisionGraceSeconds;
-        duckBlend = 0.0f;
         ResetStars();
         pigs.clear();
         gasPuffs.clear();
@@ -791,12 +787,6 @@ namespace rage {
         timer.Update(dt);
         dt = std::min(dt, 0.1f); // Match the physics engine maximum step.
         UpdatePigs(dt);
-        if (GetPlayer().Grounded() || sliding) {
-            const float direction = input.duck ? 1.0f : -1.0f;
-            duckBlend = std::clamp(duckBlend + direction * dt / duckTransition, 0.0f, 1.0f);
-        } else {
-            duckBlend = 0.0f;
-        }
         // Slide motion stays inside the level rather than changing shared movement code.
         if (sliding) {
             slideProgress = std::min(1.0f, slideProgress + dt / slideDuration);
@@ -912,9 +902,6 @@ namespace rage {
 
     void Level1::CheckHazards(float dt) {
         Rectangle player = GetPlayer().Bounds();
-        const float reduction = (player.height - duckHeight) * duckBlend;
-        player.y += reduction;
-        player.height -= reduction;
         birdCooldown = std::max(0.0f, birdCooldown - dt);
         for (const auto& bird : birds) {
             const Rectangle b = BirdBounds(bird, ElapsedSeconds());
@@ -1145,7 +1132,7 @@ namespace rage {
             if (distance > 0 && distance < 220 && std::abs(pig.y - player.y) < 55)
                 pigApproaching = true;
         }
-        if (duckBlend == 0.0f && pigApproaching) {
+        if (!GetPlayer().Crouching() && pigApproaching) {
             const auto p = GetPlayer().Position();
             DrawText("HOLD S!", static_cast<int>(p.x - 12), static_cast<int>(p.y - 50), 14, GOLD);
         }

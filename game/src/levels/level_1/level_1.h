@@ -50,7 +50,6 @@ namespace rage {
         void DrawPileup() const;
         void DrawWorld(const Resources& resources) const override;
         void DrawHud(const Resources& resources) const override;
-        float PlayerDuckBlend() const override { return duckBlend; }
         std::vector<Event> CreateEvents();
         void Respawn(const char* notification);
         void ResetTraffic();
@@ -71,7 +70,6 @@ namespace rage {
 
         Vector2 checkpoint = {};
         float collisionCooldown = 0.0f;
-        float duckBlend = 0.0f;
         float pileupSeconds = 0.0f;
         float slideProgress = 0.0f;
         float chickenX = 0.0f;

@@ -260,7 +260,7 @@ int main(int argc, char **argv) {
         if (settingsPath.empty()) settingsPath = rage::ConfigStore::DefaultSettingsPath();
         rage::ConfigStore config;
         config.Load(configPath);
-        if (!smoke) config.Load(settingsPath, true);
+        if (!smoke) config.Load(settingsPath, true, true);
 #if defined(PLATFORM_WEB)
         // Desktop remains the verified build; browser persistence needs an IDBFS mount.
         if (smoke) {

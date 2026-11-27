@@ -81,6 +81,7 @@ namespace rage {
         void DrawStaminaBar(const Resources &resources, const GameConfig &config) const;
 
         const LevelDefinition &Definition() const { return definition; }
+        bool CanClimb() const { return definition.id == LevelId::Level2; }
         const Player &GetPlayer() const { return player; }
         const Typewriter &Dialogue() const { return dialogue.writer; }
         DialogueMessageId CurrentDialogueId() const { return currentCue.id; }
@@ -138,9 +139,6 @@ namespace rage {
 
         virtual void DrawHud(const Resources &) const {
         }
-
-        // Optional level-specific duck pose: 0 = standing, 1 = fully crouched.
-        virtual float PlayerDuckBlend() const { return 0.0f; }
 
         // Queue this level's Game Data sprites (hazards, props, effects). Each is drawn on its
         // configured layer; Middle-layer sprites appear behind the player.

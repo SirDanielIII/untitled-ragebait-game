@@ -127,6 +127,12 @@ Mouse movement or clicks can change focus. A stationary pointer does not overrid
 
 The player uses seconds, small collision substeps and axis-separated rectangle collisions. Ground support is checked before jump input, including immediately after spawn/reset. World bounds and authored platform rectangles define collision geometry.
 
+Tune movement in the `player` section of `game/resources/config.yaml`, then rebuild/restart (or supply a tuning file with `--config`). It includes acceleration, counter-strafe acceleration, starting speed, coasting friction, speed, jump impulse, gravity, climbing, body dimensions, crouch multipliers and all stamina values. `GameConfig` supplies matching defaults when a key is missing.
+
+Hold Space (or W/Up) to jump whenever grounded and enough stamina is available. Climbing is exclusive to Level 2, where W/Up prioritizes climbing beside a wall; the other levels retain W/Up as jump controls. S/Down crouches to half standing height with feet fixed, moves at 20% speed, and stays crouched under low ceilings until there is room to stand. A jump from crouch, including releasing crouch and jumping together, multiplies takeoff speed by 1.2 and pays the larger crouch jump cost. Add `crouch` and optionally `crouch_walk` player animation states for dedicated art; until then the standing artwork is compressed to the crouch height.
+
+Stamina costs 18 per ordinary jump or 30 per crouch jump. Climbing drains 45/second and crouching drains 2/second; these costs stack. Walking and coasting have no stamina cost, and there is no passive airborne drain. Standing or walking on the ground restores 40/second when not crouching or climbing, including during exhaustion. Below `low_stamina_threshold` (30% by default), the bar turns red and both walking and crouch movement use `exhausted_speed_multiplier` (50%): default speeds drop from 220 to 110 and from 44 to 22 respectively. Hitting zero also latches exhaustion and prevents jumping/climbing until the 15% recovery threshold is reached; movement stays slow until stamina leaves the red range. Walking can continue throughout recovery. All thresholds, rates and multipliers are configurable. Respawn restores the configured maximum stamina and clears crouch/exhaustion.
+
 `ui/dialogue/dialogue.h` declares both the reveal state and dialogue panel. `Typewriter` stores the full message and fractional reveal progress. `DialogueBox` wraps the full text, reserves word positions while revealing, clips overflowing lines and follows the latest revealed line. UTF-8 codepoints reveal together; the loaded font supplies glyph coverage.
 
 Each `DialogueCue` specifies text, speaker, speed multiplier, delay, size and skip/replay controls. `Say` replaces the current cue. The Instant setting skips both reveal time and delay.
@@ -134,6 +140,8 @@ Each `DialogueCue` specifies text, speaker, speed multiplier, delay, size and sk
 ## Preferences
 
 Load order is `GameConfig` defaults, packaged `config.yaml` (or `--config`), then user settings (or `--settings`). The reader accepts section maps with two-space-indented numeric/bool scalars, comments and a UTF-8 BOM. Invalid keys or values are reported and leave the previous value intact.
+
+User preference loading/saving excludes the `player` section, including gameplay values in older `settings.yaml` files. Gameplay tuning therefore comes from the packaged config or `--config`, without stale preferences overriding it. `ConfigStore::Load`/`Save` can still read/write complete tuning files when `preferencesOnly` is false (the default).
 
 `--self-test` returns before configuration or window creation. `--smoke-test` loads the packaged config (or `--config`) but skips loading and saving user settings, including a supplied `--settings` file.
 
