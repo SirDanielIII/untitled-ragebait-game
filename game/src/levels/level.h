@@ -102,6 +102,7 @@ namespace rage {
         virtual std::string MusicTrack() const;
 
     protected:
+        void Restart();
         EventManager &Events() { return events; }
         Player &MutablePlayer() { return player; }
         // Event-facing object actions. These are the consistent
@@ -135,8 +136,11 @@ namespace rage {
         virtual void DrawWorld(const Resources &) const {
         }
 
-        virtual void DrawHud(const Resources &)const{
+        virtual void DrawHud(const Resources &) const {
         }
+
+        // Optional level-specific duck pose: 0 = standing, 1 = fully crouched.
+        virtual float PlayerDuckBlend() const { return 0.0f; }
 
         // Queue this level's Game Data sprites (hazards, props, effects). Each is drawn on its
         // configured layer; Middle-layer sprites appear behind the player.

@@ -21,7 +21,8 @@ namespace rage {
         None,
         Solid,
         Hazard,
-        Trigger
+        Trigger,
+        OneWay // Land on the top only; pass through from below and the sides.
     };
 
     // Topics objects post to the level's EventManager (see

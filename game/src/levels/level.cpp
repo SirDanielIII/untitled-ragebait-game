@@ -2,6 +2,7 @@
 #include "engine/graphics/layout.h"
 #include "engine/graphics/placeholder_art.h"
 #include "ui/text/text.h"
+#include "rlgl.h"
 
 #include <algorithm>
 #include <cmath>
@@ -21,6 +22,11 @@ namespace rage {
     }
 
     void Level::Reset(const GameConfig &config) {
+        preferredTextSpeed = config.charactersPerSecond;
+        Restart();
+    }
+
+    void Level::Restart() {
         events.Reset();
         player.Reset(definition.spawn);
         respawnPoint = definition.spawn;
@@ -32,7 +38,6 @@ namespace rage {
         trackingPlayerSounds = false; // A restart is not a landing.
         playerFacing = Facing::Right;
         elapsedSeconds = 0;
-        preferredTextSpeed = config.charactersPerSecond;
         currentCue.id = 0;
         Say(definition.intro);
         OnReset();
@@ -68,7 +73,8 @@ namespace rage {
         // the player moves, and before events.Update(), so the
         // notifications they post are visible to events this update.
         objects.UpdateAll(dt);
-        player.Update(dt, input, config, objects.SolidBounds(), definition.world);
+        player.Update(dt, input, config, objects.SolidBounds(), definition.world,
+                      objects.SolidBounds(CollisionType::OneWay));
         UpdatePlayerAnimation(dt);
         UpdatePlayerSounds(dt);
         CheckHazardsAndTriggers();
@@ -264,6 +270,27 @@ namespace rage {
         if (!animation) animation = assets.Find(playerAssetId, "idle");
         if (!animation) animation = assets.Find(playerAssetId, "");
         const Rectangle body = player.Bounds();
+        const float duck = std::clamp(PlayerDuckBlend(), 0.0f, 1.0f);
+        if (duck > 0.0f) {
+            const Vector2 feet = SnapToPixels({body.x + body.width / 2, body.y + body.height});
+            // Compress the existing sprite around its feet, not its centre. No new art required.
+            // The same interpolation that lowers the pig hitbox drives the pose.
+            queue.Submit(animation ? animation->layer : Layer::Middle,
+                         [this, &resources, &assets, animation, body, feet, duck] {
+                rlPushMatrix();
+                rlTranslatef(feet.x, feet.y, 0.0f);
+                rlScalef(1.0f + 0.10f * duck, 1.0f - 0.72f * duck, 1.0f);
+                rlTranslatef(-feet.x, -feet.y, 0.0f);
+                if (animation) {
+                    assets.Draw(*animation, playerAnimator.Frame(*animation), feet, playerFacing,
+                                [&resources](Rectangle b, bool) { art::Student(resources, b); });
+                } else {
+                    art::Student(resources, body);
+                }
+                rlPopMatrix();
+            });
+            return;
+        }
         if (!animation) {
             // No Game Data rows for the player yet: keep the original drawing at the collision size.
             queue.Submit(Layer::Middle, [&resources, body] { art::Student(resources, body); });

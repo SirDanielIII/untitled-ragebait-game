@@ -2,8 +2,10 @@
 
 #include "levels/level.h"
 #include "levels/level_1/fake_timer.h"
+
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace rage {
     class Level1 final : public Level {
@@ -17,39 +19,64 @@ namespace rage {
             Color color;
         };
 
-        struct Bird {
-            Rectangle bounds;
-            float speed;
-        };
-
         struct FallingStar {
             float x;
             float triggerX;
-            float y;
-            float warningSeconds;
-            bool warned;
-            bool falling;
-            bool finished;
+            float y = 0;
+            float warningSeconds = 0;
+            bool warned = false;
+            bool falling = false;
+            bool finished = false;
+        };
+
+        struct FlyingPig {
+            Rectangle bounds;
+            int route;
+            float waveAmplitude;
+            float waveRate;
+            float wavePhase;
+            float speed = 165;
+            float steerSeconds = 0;
+            float fartSeconds = 0;
+        };
+
+        struct GasPuff {
+            Vector2 center;
+            float age = 0;
         };
 
         void OnReset() override;
         void OnUpdate(float dt, const InputFrame& input) override;
+        void DrawPileup() const;
         void DrawWorld(const Resources& resources) const override;
         void DrawHud(const Resources& resources) const override;
+        float PlayerDuckBlend() const override { return duckBlend; }
         std::vector<Event> CreateEvents();
         void Respawn(const char* notification);
+        void ResetTraffic();
+        void CheckHazards(float dt);
+        void ResetStars();
+        void UpdatePigs(float dt);
+        void UpdateCampus();
 
-        std::array<Vehicle, 3> traffic = {};
-        std::array<Bird, 2> birds = {};
-        std::array<FallingStar, 2> stars = {};
+        std::array<Vehicle, 5> traffic = {}; // The last car waits in the tunnel between speeding runs.
+        float speederDelay = 0.0f;
+        std::vector<FlyingPig> pigs;
+        std::vector<GasPuff> gasPuffs;
+        float pigSpawnSeconds = 0;
+        float birdCooldown = 0;
+        bool crashImpact = false;
+        std::array<FallingStar, 9> stars = {};
         FakeTimer timer;
 
         Vector2 checkpoint = {};
         float collisionCooldown = 0.0f;
-        float duckSeconds = 0.0f;
+        float duckBlend = 0.0f;
         float pileupSeconds = 0.0f;
         float slideProgress = 0.0f;
-        float chickenX = 1550.0f;
+        float chickenX = 0.0f;
+        float previousAnvilY = 0.0f;
+        float anvilLandedAt = 0.0f;
         int collisionCount = 0;
         bool roadCheckpointReached = false;
         bool skyCheckpointReached = false;

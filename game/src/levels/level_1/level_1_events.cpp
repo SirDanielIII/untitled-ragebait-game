@@ -1,5 +1,7 @@
 #include "levels/level_1/level_1.h"
 
+#include <cmath>
+
 namespace rage {
     std::vector<Event> Level1::CreateEvents() {
         return {
@@ -13,7 +15,7 @@ namespace rage {
             },
             {
                 .id = "road-tip",
-                .condition = [this] { return GetPlayer().Position().x >= 585.0f && GetPlayer().Position().x < 1800.0f && CanSay(); },
+                .condition = [this] { return GetPlayer().Position().x >= 585.0f && GetPlayer().Position().x < 2700.0f && CanSay(); },
                 .execute = [this] {
                     Say({.text = "Don't worry about the traffic. Cars always stop for students.\n"
                                  "Well, almost always.",
@@ -22,7 +24,7 @@ namespace rage {
             },
             {
                 .id = "chicken-pileup",
-                .condition = [this] { return pileupStarted && GetPlayer().Position().x < 2300.0f && CanSay(); },
+                .condition = [this] { return pileupStarted && GetPlayer().Position().x < 3200.0f && CanSay(); },
                 .execute = [this] {
                     Say({.text = "A chicken crossing the road? How original.\n"
                                  "Looks like the drivers weren't ready for that joke.",
@@ -31,10 +33,10 @@ namespace rage {
             },
             {
                 .id = "road-checkpoint",
-                .condition = [this] { return GetPlayer().Position().x >= 1830.0f && !roadCheckpointReached; },
+                .condition = [this] { return pileupSettled && GetPlayer().Position().x >= 2700.0f && !roadCheckpointReached; },
                 .execute = [this] {
                     roadCheckpointReached = true;
-                    checkpoint = {1800.0f, 1436.0f};
+                    checkpoint = {2700.0f, 1436.0f};
                     Say({.text = "A car pile-up makes a staircase now. Very convenient.\n"
                                  "Checkpoint saved. Try not to look relieved.",
                          .effects = {.holdSeconds = 3.0f, .fadeSeconds = 1.0f}}, DialoguePolicy::Interrupt);
@@ -43,23 +45,38 @@ namespace rage {
             {
                 .id = "sky-checkpoint",
                 .condition = [this] {
-                    return GetPlayer().Position().x >= 2840.0f && GetPlayer().Position().y <= 850.0f
+                    return GetPlayer().Position().x >= 3740.0f && GetPlayer().Position().y <= 850.0f
                         && !skyCheckpointReached;
                 },
                 .execute = [this] {
                     skyCheckpointReached = true;
-                    checkpoint = {2820.0f, 784.0f};
-                    Say({.text = "Welcome to the sky. The telephone wires only bite sometimes.\n"
+                    checkpoint = {3720.0f, 784.0f};
+                    Say({.text = "Welcome to the sky. Jump onto clouds when the wires flash yellow.\n"
                                  "Another checkpoint. You're getting suspiciously good at this.",
                          .effects = {.holdSeconds = 3.0f, .fadeSeconds = 1.0f}}, DialoguePolicy::Interrupt);
                 }
             },
             {
-                .id = "pig-warning",
-                .condition = [this] { return GetPlayer().Position().x >= 3800.0f && GetPlayer().Position().x < 4600.0f && CanSay(); },
+                .id = "cloud-checkpoint",
+                .condition = [this] {
+                    const auto body = GetPlayer().Bounds();
+                    const auto cloud = Objects().Get("cloud-1")->Bounds();
+                    return GetPlayer().Grounded() && std::abs(body.y + body.height - cloud.y) < 0.1f
+                        && body.x < cloud.x + cloud.width && body.x + body.width > cloud.x;
+                },
                 .execute = [this] {
-                    Say({.text = "Flying pigs: totally normal. Tap S to duck while one passes.\n"
-                                 "Or stand tall. It can only improve your day.",
+                    const auto cloud = Objects().Get("cloud-1")->Position();
+                    checkpoint = {cloud.x, cloud.y - GetPlayer().Bounds().height};
+                    Say({.text = "Checkpoint saved. At least the clouds aren't plugged in.",
+                         .effects = {.holdSeconds = 2.0f, .fadeSeconds = 1.0f}}, DialoguePolicy::Interrupt);
+                }
+            },
+            {
+                .id = "pig-warning",
+                .condition = [this] { return GetPlayer().Position().x >= 4710.0f && GetPlayer().Position().x < 6610.0f && CanSay(); },
+                .execute = [this] {
+                    Say({.text = "Hold S to duck low pigs. Those green farts are lethal.\n"
+                                 "Boxed in? Wait on a cloud and let the herd pass.",
                          .effects = {.holdSeconds = 3.0f, .fadeSeconds = 1.0f}});
                 }
             },
@@ -76,13 +93,25 @@ namespace rage {
             {
                 .id = "campus-arrival",
                 .condition = [this] {
-                    return slideFinished && GetPlayer().Position().x >= 5050.0f && !campusReached;
+                    return slideFinished && GetPlayer().Position().x >= 6975.0f && !campusReached;
                 },
                 .execute = [this] {
                     campusReached = true;
                     Say({.text = "You actually made it to campus. Unbelievable.\n"
                                  "Now find the lecture hall before I think of something else.",
                          .effects = {.holdSeconds = 5.0f, .fadeSeconds = 1.5f}}, DialoguePolicy::Interrupt);
+                }
+            },
+            {
+                .id = "anvil-hit",
+                .execute = [this] {
+                    Restart();
+                    RequestSound(playerSounds::death);
+                    Say({.text = "Back to square one. Next time, let the anvil go first.",
+                         .effects = {.holdSeconds = 2.0f, .fadeSeconds = 1.0f}}, DialoguePolicy::Interrupt);
+                },
+                .matchesNotification = [](const EventNotification& n) {
+                    return n.topic == "level1.anvil_hit";
                 }
             },
             {
@@ -114,8 +143,8 @@ namespace rage {
                          .effects = {.holdSeconds = 1.4f, .fadeSeconds = 0.9f}}, DialoguePolicy::Interrupt);
                 },
                 .matchesNotification = [](const EventNotification& n) {
-                    return n.topic == "level1.bird_hit" || n.topic == "level1.star_hit"
-                        || n.topic == "level1.pig_hit" || n.topic == "level1.fall_hit";
+                    return n.topic == "level1.star_hit"
+                        || n.topic == "level1.pig_hit" || n.topic == "level1.pig_gas_hit" || n.topic == "level1.fall_hit";
                 },
                 .repeatable = true
             },
