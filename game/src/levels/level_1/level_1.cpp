@@ -10,9 +10,9 @@
 
 namespace rage {
     namespace {
-        // All coordinates use world pixels. The player's collider is 30x44.
-        // Default movement (260 px/s) and jump (620 px/s, gravity 1500) allow
-        // about 128 px of jump height. Ledges in the climb are 78-102 px apart.
+        // All coordinates use world pixels. Default standing/crouching colliders are 30x44/30x22.
+        // Default jumps reach about 96 px, or 138 px from crouch for taller ledges.
+        // Movement tuning lives in config.yaml; wall climbing is exclusive to Level 2.
         constexpr float floorY = 1480.0f;
         constexpr float collisionGraceSeconds = 0.35f;
         constexpr float roadStart = 580.0f;
@@ -34,38 +34,6 @@ namespace rage {
         constexpr char anvilId[] = "doorway-anvil";
         constexpr float anvilPoofDuration = 0.45f;
         constexpr char exitId[] = "exit-level1";
-        struct PoleBird {
-            Vector2 perch;
-            float rhythm;
-            float phase;
-            Color plumage;
-        };
-        constexpr std::array<PoleBird, 3> birds{{
-            {{3240, 1120}, 2.2f, 0.4f, {104, 224, 211, 255}},
-            {{3415, 1010}, 1.8f, 2.1f, {249, 150, 115, 255}},
-            {{3610, 882}, 2.5f, 4.6f, {204, 154, 246, 255}}
-        }};
-        Rectangle BirdBounds(const PoleBird& bird, float time) {
-            const float phase = time * bird.rhythm + bird.phase;
-            return {bird.perch.x + 84 * std::sin(phase),
-                    bird.perch.y - 50 * std::abs(std::sin(phase * 2)), 38, 27};
-        }
-        void DrawPoleBird(const PoleBird& bird, float time) {
-            const Rectangle b = BirdBounds(bird, time);
-            const float facing = std::cos(time * bird.rhythm + bird.phase) >= 0 ? 1.0f : -1.0f;
-            rlPushMatrix();
-            rlTranslatef(b.x + 19, b.y + 14, 0);
-            DrawEllipse(0, 0, 19, 13, bird.plumage);
-            DrawEllipse(static_cast<int>(-6 * facing), static_cast<int>(4 * std::sin(time * 22)), 10, 5, DARKPURPLE);
-            DrawCircleV({9 * facing, -7}, 8, RAYWHITE);
-            DrawCircleV({12 * facing, -8}, 3, BLACK);
-            DrawLineEx({16 * facing, -1}, {25 * facing, 1}, 5, GOLD);
-            DrawLineEx({0, -10}, {-1, -20}, 2, DARKBLUE);
-            const float rotor = 12 * std::cos(time * 30);
-            DrawLineEx({-1 - rotor, -21}, {-1 + rotor, -19}, 4, RED);
-            rlPopMatrix();
-        }
-
         void DrawAnvil(Rectangle b) {
             const Color steel{62, 73, 92, 255};
             DrawTriangle({b.x, b.y + 2}, {b.x + 37, b.y + 22}, {b.x + 37, b.y + 2}, steel);
@@ -88,7 +56,6 @@ namespace rage {
                 DrawCircleV({puff.x - 2, puff.y - 4}, radius * 0.72f, Fade(RAYWHITE, 1 - t));
             }
         }
-        constexpr float duckHeight = 18.0f;
         constexpr float pigScale = 1.35f;
         // World-space flight heights for the upper, middle, and lower cloud routes.
         constexpr std::array<float, 3> pigRouteY{475, 620, 750};
@@ -111,7 +78,6 @@ namespace rage {
                         radius * 0.72f, Fade({163, 221, 64, 255}, 0.87f * opacity));
         }
 
-        constexpr float duckTransition = 0.09f;
         constexpr std::array<Rectangle, 3> refuges{{
             {3975, 705, 96, 16},
             {4260, 690, 96, 16},
@@ -158,9 +124,6 @@ namespace rage {
             {4430.0f, 766.0f, 220.0f, 12.0f}
         }};
 
-        bool Intersects(Rectangle a, Rectangle b) {
-            return CheckCollisionRecs(a, b);
-        }
         float RoadDepth(float x) {
             const float t = std::clamp((rampStartX - x) / (rampStartX - rampEndX), 0.0f, 1.0f);
             return underpassDepth * t * t;
@@ -590,7 +553,6 @@ namespace rage {
             {tunnelSpawnX, floorY - 38, 86, 38}
         }};
         constexpr std::array<const char*, 5> carIds{"car-1", "car-2", "car-3", "car-4", "car-5"};
-        constexpr std::array<const char*, 3> birdIds{"pole-bird-1", "pole-bird-2", "pole-bird-3"};
         constexpr std::array<const char*, 3> wreckCarIds{"wreck-car-1", "wreck-car-2", "wreck-car-3"};
         constexpr std::array<const char*, 3> cableIds{"cable-1", "cable-2", "cable-3"}; // Drawn over wire-1 to wire-3.
         constexpr std::size_t gasSlots = 16; // Puffs on screen at once; extra puffs are not drawn.
@@ -693,7 +655,6 @@ namespace rage {
             for (const auto& o : solid)
                 if (o.id.rfind("telephone-step-", 0) == 0 || o.id == "sky-checkpoint-ledge")
                     add(NumberedId("utility-pole-", poles++), box(o));
-            for (std::size_t i = 0; i < birds.size(); ++i) add(birdIds[i], BirdBounds(birds[i], 0));
             for (std::size_t i = 0; i <= wires.size(); ++i) add(NumberedId("wire-mast-", i), WireMastBounds(i));
             for (std::size_t i = 0; i < wires.size(); ++i) add(cableIds[i], wires[i]);
             // Cloud refuges above the wires, then the clouds; the flag stands on the first cloud.
@@ -802,7 +763,11 @@ namespace rage {
         return definition;
     }
 
-    Level1::Level1() : Level(Level1Definition()) {
+    Level1::Level1() : Level(Level1Definition()), birds{
+        Bird(PoleFlight{{3240, 1120}, 2.2f, 0.4f}),
+        Bird(PoleFlight{{3415, 1010}, 1.8f, 2.1f}),
+        Bird(PoleFlight{{3610, 882}, 2.5f, 4.6f})
+    } {
         for (auto& event : CreateEvents()) Events().RegisterEvent(std::move(event));
         SetUpStandIns();
     }
@@ -825,7 +790,9 @@ namespace rage {
 
     void Level1::OnReset() {
         timer.Reset();
+        nextHazardId = 1;
         ResetTraffic();
+        for (auto& bird : birds) bird.Reset();
         birdCooldown = 0;
         ResetStars();
         pigs.clear();
@@ -833,7 +800,6 @@ namespace rage {
         pigSpawnSeconds = 1.0f;
         checkpoint = Definition().spawn;
         collisionCooldown = 0.0f;
-        duckBlend = 0.0f;
         slideProgress = 0.0f;
         collisionCount = 0;
         roadCheckpointReached = false;
@@ -848,7 +814,6 @@ namespace rage {
         if (pileupStarted && !crashImpact) ResetTraffic();
         MutablePlayer().Reset(checkpoint);
         collisionCooldown = collisionGraceSeconds;
-        duckBlend = 0.0f;
         ResetStars();
         pigs.clear();
         gasPuffs.clear();
@@ -856,7 +821,7 @@ namespace rage {
         RequestSound(playerSounds::death);
         ++collisionCount;
         Events().Notify({notification, static_cast<std::uint64_t>(collisionCount)});
-        timer.Reset();
+        timer.Reset(60.0f, false); // Reset the countdown without repeating the entrance on each death.
     }
 
     void Level1::ResetStars() {
@@ -887,7 +852,7 @@ namespace rage {
             pig.fartSeconds -= dt;
             const Vector2 tail{pig.bounds.x + 89 * pigScale, pig.bounds.y + 20 * pigScale};
             if (pig.fartSeconds <= 0 && InCloudSection(tail.x)) {
-                gasPuffs.push_back({tail});
+                gasPuffs.push_back({tail, 0, nextHazardId++});
                 pig.fartSeconds = GetRandomValue(100, 165) / 100.0f;
             }
         }
@@ -914,7 +879,7 @@ namespace rage {
         const float entryY = pigRouteY[route] + amplitude * std::sin(phase);
         pigs.push_back({.bounds = {spawnX, entryY, 94 * pigScale, 38 * pigScale}, .route = route,
                         .waveAmplitude = amplitude, .waveRate = GetRandomValue(90, 210) / 100.0f,
-                        .wavePhase = phase, .fartSeconds = GetRandomValue(70, 130) / 100.0f});
+                        .wavePhase = phase, .fartSeconds = GetRandomValue(70, 130) / 100.0f, .id = nextHazardId++});
         pigSpawnSeconds = GetRandomValue(100, 150) / 100.0f;
     }
 
@@ -924,15 +889,9 @@ namespace rage {
         if (!anvil->IsActive() && !anvil->IsTriggered() && body.x + body.width >= anvil->Position().x - 45) {
             ActivateObject(anvilId);
             StartObjectFall(anvilId);
-            previousAnvilY = anvil->Position().y;
         }
         if (anvil->IsActive() && !Objects().IsActive(exitId) && !IsComplete()) {
-            Rectangle fall = anvil->Bounds();
-            const float currentY = fall.y;
-            fall.height += fall.y - previousAnvilY;
-            fall.y = previousAnvilY;
-            previousAnvilY = currentY;
-            if (Intersects(body, fall)) {
+            if (ScriptContact(anvilId, anvil->CollisionBounds())) {
                 Events().Notify({"level1.anvil_hit"});
                 return;
             }
@@ -942,7 +901,7 @@ namespace rage {
                 ActivateObject(exitId);
             }
         }
-        if (body.y >= 1520.0f) Respawn("level1.fall_hit");
+        if (ScriptContact("campus-fall", {0, 1564, 7200, 1000})) Respawn("level1.fall_hit");
     }
 
     void Level1::OnUpdate(float dt, const InputFrame& input) {
@@ -995,11 +954,6 @@ namespace rage {
         showCentred("crash-blast", crashImpact && pileupSeconds < blastDuration, {blast.center.x, blast.center.y, 0, 0});
         if (auto* o = object("crash-blast")) o->SetAnimationTime(std::max(0.0f, pileupSeconds));
 
-        for (std::size_t i = 0; i < birds.size(); ++i) {
-            show(birdIds[i], true, BirdBounds(birds[i], time));
-            const bool right = std::cos(time * birds[i].rhythm + birds[i].phase) >= 0;
-            if (auto* bird = object(birdIds[i])) bird->SetFacing(right ? Facing::Right : Facing::Left);
-        }
         for (std::size_t i = 0; i < wires.size(); ++i) {
             const int w = static_cast<int>(i);
             if (auto* wire = object(cableIds[i]))
@@ -1034,16 +988,11 @@ namespace rage {
         }
     }
 
-    void Level1::UpdateScript(float dt, const InputFrame& input) {
+    void Level1::UpdateScript(float dt, const InputFrame&) {
         timer.Update(dt);
+        for (auto& bird : birds) bird.Update(dt, ElapsedSeconds(), GetPlayer().Bounds());
         dt = std::min(dt, 0.1f); // Match the physics engine maximum step.
         UpdatePigs(dt);
-        if (GetPlayer().Grounded() || sliding) {
-            const float direction = input.duck ? 1.0f : -1.0f;
-            duckBlend = std::clamp(duckBlend + direction * dt / duckTransition, 0.0f, 1.0f);
-        } else {
-            duckBlend = 0.0f;
-        }
         // Slide motion stays inside the level rather than changing shared movement code.
         if (sliding) {
             slideProgress = std::min(1.0f, slideProgress + dt / slideDuration);
@@ -1142,7 +1091,7 @@ namespace rage {
                 }
             }
         }
-        if (Intersects(GetPlayer().Bounds(), rainbowGate)) {
+        if (ScriptContact("rainbow-slide", rainbowGate, CollisionType::Trigger)) {
             sliding = true;
             slideProgress = 0.0f;
             MutablePlayer().Reset(slideStart);
@@ -1159,13 +1108,10 @@ namespace rage {
 
     void Level1::CheckHazards(float dt) {
         Rectangle player = GetPlayer().Bounds();
-        const float reduction = (player.height - duckHeight) * duckBlend;
-        player.y += reduction;
-        player.height -= reduction;
         birdCooldown = std::max(0.0f, birdCooldown - dt);
         for (const auto& bird : birds) {
-            const Rectangle b = BirdBounds(bird, ElapsedSeconds());
-            if (birdCooldown == 0 && Intersects(player, b)) {
+            const Rectangle b = bird.Bounds();
+            if (ScriptContact("pole-bird-" + std::to_string(&bird - birds.data()), b, CollisionType::Trigger, birdCooldown == 0)) {
                 const bool left = player.x + player.width / 2 < b.x + b.width / 2;
                 MutablePlayer().Bounce({left ? -390.0f : 390.0f, -315.0f});
                 birdCooldown = 0.6f;
@@ -1173,7 +1119,9 @@ namespace rage {
             }
         }
         // Sidewalk: two stationary objects to jump over.
-        if (Intersects(player, trashCan) || Intersects(player, hydrant)) {
+        const bool trashHit = ScriptContact("trash-can", trashCan);
+        const bool hydrantHit = ScriptContact("hydrant", hydrant);
+        if (trashHit || hydrantHit) {
             Respawn("level1.obstacle_hit");
             return;
         }
@@ -1181,7 +1129,7 @@ namespace rage {
         if (!crashImpact) {
             for (const auto& car : traffic) {
                 const Rectangle visibleCar = VisibleRoadCar(car.bounds);
-                if (visibleCar.width > 0.0f && Intersects(player, visibleCar)) {
+                if (ScriptContact("traffic-" + std::to_string(&car - traffic.data()), visibleCar, CollisionType::Hazard, visibleCar.width > 0)) {
                     Respawn("level1.traffic_hit");
                     return;
                 }
@@ -1191,10 +1139,8 @@ namespace rage {
         for (std::size_t i = 0; i < wires.size(); ++i) {
             if (!WireLive(static_cast<int>(i), ElapsedSeconds())) continue;
             const Rectangle wire = wires[i];
-            const float feet = player.y + player.height;
-            const bool standingOnWire = GetPlayer().Grounded()
-                && player.x < wire.x + wire.width && player.x + player.width > wire.x
-                && std::abs(feet - wire.y) < 5.0f;
+            const bool standingOnWire = ScriptContact("live-wire-" + std::to_string(i),
+                {wire.x, wire.y - 4, wire.width, 4}, CollisionType::Hazard, GetPlayer().Grounded());
             if (standingOnWire) {
                 Respawn("level1.wire_hit");
                 return;
@@ -1203,25 +1149,28 @@ namespace rage {
         for (const auto& pig : pigs) {
             const Rectangle body{pig.bounds.x + 5 * pigScale, pig.bounds.y + 6 * pigScale,
                                  78 * pigScale, 29 * pigScale};
-            if (Intersects(player, body)) {
+            if (ScriptContact("pig-" + std::to_string(pig.id), body)) {
                 Respawn("level1.pig_hit");
                 return;
             }
         }
         for (const auto& puff : gasPuffs) {
-            if (CheckCollisionCircleRec(puff.center, GasRadius(puff.age), player)) {
+            const float radius = GasRadius(puff.age);
+            if (ScriptContact("pig-gas-" + std::to_string(puff.id),
+                {puff.center.x - radius, puff.center.y - radius, 2 * radius, 2 * radius})) {
                 Respawn("level1.pig_gas_hit");
                 return;
             }
         }
         for (const auto& star : stars) {
-            if (star.falling && Intersects(player, {star.x - starHitWidth / 2, star.y - 18.0f, starHitWidth, 38.0f})) {
+            if (ScriptContact("star-" + std::to_string(&star - stars.data()),
+                {star.x - starHitWidth / 2, star.y - 18.0f, starHitWidth, 38.0f}, CollisionType::Hazard, star.falling)) {
                 Respawn("level1.star_hit");
                 return;
             }
         }
         // No collision floor exists beneath the suspended sky section.
-        if (GetPlayer().Position().y >= 1520.0f) {
+        if (ScriptContact("sky-fall", {0, 1564, 7200, 1000})) {
             Respawn("level1.fall_hit");
         }
     }
@@ -1234,6 +1183,11 @@ namespace rage {
             return visible.width > 0 && distance > -110 && distance < 230;
         });
         return SignalGreen(static_cast<float>(x), ElapsedSeconds(), carNear);
+    }
+
+    void Level1::SubmitSprites(RenderQueue& queue, const Resources& resources) const {
+        Level::SubmitSprites(queue, resources);
+        for (const auto& bird : birds) bird.SubmitSprites(queue, resources.Assets(), Camera().zoom);
     }
 
     Vector2 Level1::CrashImpact() const {
@@ -1371,8 +1325,6 @@ namespace rage {
                 stand(object->Id(), [](Rectangle ledge) { DrawUtilityPole(ledge); });
             if (object->Id().rfind("sky-cloud-", 0) == 0) stand(object->Id(), [](Rectangle p) { DrawCloud(p); });
         }
-        for (std::size_t i = 0; i < birdIds.size(); ++i)
-            stand(birdIds[i], [this, i](Rectangle) { DrawPoleBird(birds[i], ElapsedSeconds()); });
         // The grounded masts, then the insulators and live cables.
         for (std::size_t i = 0; i <= wires.size(); ++i)
             stand(NumberedId("wire-mast-", i), [i](Rectangle) { DrawWireMast(i); });
@@ -1489,7 +1441,7 @@ namespace rage {
             const float distance = flyer.bounds.x - (player.x + player.width);
             if (distance > 0 && distance < 220 && std::abs(flyer.bounds.y - player.y) < 55) pigApproaching = true;
         }
-        if (duckBlend == 0.0f && pigApproaching) {
+        if (!GetPlayer().Crouching() && pigApproaching) {
             const auto p = GetPlayer().Position();
             DrawText("HOLD S!", static_cast<int>(p.x - 12), static_cast<int>(p.y - 50), 14, GOLD);
         }
@@ -1498,8 +1450,8 @@ namespace rage {
         if (campusReached) DrawText("YOU MADE IT!", 6915, 1420, 15, {160, 237, 179, 255});
     }
 
-    void Level1::DrawHud(const Resources&) const {
-        timer.Draw(1420, 26, 44);
+    void Level1::DrawHud(const Resources& resources) const {
+        timer.Draw(resources);
     }
     std::unique_ptr<Level> MakeLevel1() { return std::make_unique<Level1>(); }
 }

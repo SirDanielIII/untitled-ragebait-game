@@ -174,7 +174,7 @@ Each level has a sprites file next to it, `level_<n>_sprites.cpp`, that says whi
 - **States:** some things change look. Add a row per state, `<Asset ID>_<state>` (`traffic_light_red`, `traffic_light_green`). With one row, it is used for every state.
 - A name in the file that doesn't exist prints `Sprites: ... has no object named "..."` in the terminal.
 
-**In Level 1 every visible thing is already listed,** including the road, signs, cars, birds, pigs, clouds, the crash and the campus. The words on signs stay as text on top of the sprites.
+**In Level 1 every visible thing is already listed,** including the road, signs, cars, pigs, clouds, the crash and the campus. Birds in every level are drawn by `objects/bird.cpp` with Asset ID `bird`. The words on signs stay as text on top of the sprites.
 
 **Adding a new thing** that a level's own code moves: add an `ArtObject` for it (Level 1 lists these in `WithArtObjects` in `level_1.cpp`, in drawing order: later ones are in front), keep it on the script's rectangle in the level's `SyncObjects()` with `PlaceObject`, and give it a line in the sprites file:
 
@@ -293,6 +293,12 @@ private:
 - `assets.Find("anvil", "fall")` finds the row with Asset ID `anvil` whose Animation ID ends in `_fall`.
 - `anvilAnimator.Frame(*anvil)` picks the frame from the sheet's FPS and Loops. `anvilAnimator.Finished(*anvil)` tells you when a non-looping animation is done.
 - **Facing:** pass a fifth argument to mirror art, e.g. `queue.Submit(assets, *anvil, frame, position, Facing::Left)`. The image is mirrored when that is the opposite of the row's Faces value.
+
+### Shared birds (Levels 1 and 2)
+
+Both levels use `objects/bird.*` and Asset ID `bird`. The exported Game Data includes `bird_fly` and `bird_swoop` rows with blank File Names, so both levels draw the same temporary bird. To replace it, set their File Names to exported PNGs and update Frame Width, Frame Height, Frames, FPS and Loops to match the art. Set Faces to the direction the artwork faces; the bird mirrors it when it turns. The default centre pivot anchors the art to the middle of the bird's hitbox. Sprites use the normal `pixelScale` and the row's Layer.
+
+`bird_fly` plays during ordinary flight; `bird_swoop` plays during Level 2 dives. If no swoop row exists, the bird uses its fly animation. Flight and collision remain in C++: Level 1 keeps its phased loops around poles and 38×27 hitboxes; Level 2 keeps its horizontal patrols, proximity-triggered swoops and 38×22 hitboxes. Artwork changes do not change those paths or collision sizes.
 
 ## How sprites are scaled
 

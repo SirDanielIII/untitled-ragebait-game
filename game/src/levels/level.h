@@ -11,6 +11,7 @@
 #include <functional>
 #include <string_view>
 #include "player/player.h"
+#include "player/jump_particles.h"
 #include "ui/dialogue/dialogue.h"
 #include "engine/resources/resources.h"
 #include <memory>
@@ -75,6 +76,9 @@ namespace rage {
         // collision geometry comes from these, not from artwork.
         // (Previously a list of platform rectangles; see objects/.)
         std::vector<GameObjectDefinition> objects;
+        bool sideBoundaries = true;
+        bool ceilingBoundary = true;
+        bool bottomKillZone = true;
         // Asset IDs for the objects above, from the level's sprites file. These
         // replace an object's own .assetId when the level loads.
         std::vector<SpriteAssignment> sprites;
@@ -91,9 +95,12 @@ namespace rage {
         void Update(float dt, const InputFrame &input, const GameConfig &config);
 
         void Draw(const Resources &resources, const GameConfig &config) const;
-        void DrawStaminaBar(const Resources &resources, const GameConfig &config) const;
 
         const LevelDefinition &Definition() const { return definition; }
+        // Names in the level's sprites file that match no object (typos). The game prints
+        // them when it creates the level.
+        const std::vector<std::string> &UnmatchedSprites() const { return unmatchedSprites; }
+        bool CanClimb() const { return definition.id == LevelId::Level2; }
         const Player &GetPlayer() const { return player; }
         const Typewriter &Dialogue() const { return dialogue.writer; }
         DialogueMessageId CurrentDialogueId() const { return currentCue.id; }
@@ -116,6 +123,11 @@ namespace rage {
 
     protected:
         void Restart();
+        // Scripted animation supplies geometry/identity; detection and entry tracking
+        // still use the shared system. Call each frame while the shape exists.
+        bool ScriptContact(const std::string &id, Rectangle bounds, CollisionType type = CollisionType::Hazard,
+                           bool enabled = true);
+
         EventManager &Events() { return events; }
         Player &MutablePlayer() { return player; }
         // Event-facing object actions. These are the consistent
@@ -165,9 +177,6 @@ namespace rage {
         virtual void DrawHud(const Resources &) const {
         }
 
-        // Optional level-specific duck pose: 0 = standing, 1 = fully crouched.
-        virtual float PlayerDuckBlend() const { return 0.0f; }
-
         // Queue this level's Game Data sprites (hazards, props, effects). Each is drawn on its
         // configured layer; Middle-layer sprites appear behind the player.
         // The base implementation queues the level's game objects;
@@ -182,7 +191,8 @@ namespace rage {
 
     private:
         void UpdateCamera();
-        void CheckHazardsAndTriggers();
+        bool CheckHazardsAndTriggers();
+        void RefreshColliders();
         void NotifyObject(const GameObject &object, const char *topic);
 
         bool ApplyDialogueSpeed();
@@ -197,6 +207,7 @@ namespace rage {
 
         const LevelDefinition &definition;
         Player player;
+        JumpParticles jumpParticles;
         DialogueBox dialogue;
         Camera2D camera = {};
         DialogueCue currentCue;
@@ -210,6 +221,14 @@ namespace rage {
         Facing playerFacing = Facing::Right;
         EventManager events;
         ObjectManager objects;
+        CollisionSystem collisions;
+        CollisionSystem scriptCollisions;
+        std::unordered_map<std::string, Collider> scriptBounds;
+        std::vector<Collider> scriptShapes;
+        std::vector<CollisionContact> scriptContacts;
+        std::vector<CollisionContact> previousScriptContacts;
+        std::vector<std::string> unmatchedSprites;
+        Rectangle scriptPlayerFrom{};
         Vector2 respawnPoint{};
         bool levelComplete = false;
         std::vector<std::string> soundRequests;

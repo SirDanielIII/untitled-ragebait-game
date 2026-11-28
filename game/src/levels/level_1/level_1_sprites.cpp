@@ -12,6 +12,7 @@
 // - States: add a row per state, "<Asset ID>_<state>" (traffic_light_red, traffic_light_green).
 //   With only one row, it is used for every state.
 // - Effects marked "plays once" start their animation from the first frame each time.
+// - The birds are drawn by objects/bird.cpp with Asset ID "bird".
 // - A thing named here that doesn't exist prints "Sprites: ... has no object named" when the
 //   game starts. New things are added to the list in WithArtObjects (level_1.cpp).
 #include "levels/level_1/level_1.h"
@@ -41,7 +42,6 @@ namespace rage {
 
             // --- Telephone poles and wires ---
             {"utility-pole-*", "utility_pole"},       // box is the 52 x 18 crossarm (the last is 100 wide); the pole hangs below (Pivot top-left)
-            {"pole-bird-*", "pole_bird"},             // 38 x 27, faces the way it flies
             {"wire-mast-*", "wire_mast"},             // about 38-60 wide, from the wires down to the ground
             {"cable-*", "wire"},                      // 220-240 x 12 cable; insulators hang below (Pivot top-left); states: idle, warning, live
             {"sign-duck", "sign_duck"},               // 112 x 22; "HOLD S: DUCK" stays text

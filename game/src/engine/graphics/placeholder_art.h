@@ -11,5 +11,8 @@ namespace rage::art {
 
     void Platform(const Resources &resources, Rectangle bounds, Color accent);
 
+    // Shared stand-in for the Game Data bird asset until its PNGs are supplied.
+    void Bird(Rectangle bounds, bool facingRight, float seconds);
+
     void LevelBackdrop(const Resources &resources, ArtId backdrop, Rectangle world, Color accent);
 }

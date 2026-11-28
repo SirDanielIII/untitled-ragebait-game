@@ -6,7 +6,7 @@ namespace rage {
     // Captured once per frame; controllers can also consume these values in tests.
     struct InputFrame {
         float move = 0.0f;
-        bool jump = false;
+        bool jump = false; // Held: automatically jump again when supported and affordable.
         bool pause = false;
         bool confirm = false;
         bool back = false;
@@ -32,7 +32,7 @@ namespace rage {
         const bool left = IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT);
         const bool right = IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT);
         input.move = static_cast<float>(right) - static_cast<float>(left);
-        input.jump = IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP);
+        input.jump = IsKeyDown(KEY_SPACE) || IsKeyDown(KEY_W) || IsKeyDown(KEY_UP);
         input.pause = IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_P);
         input.back = IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE);
         input.confirm = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER);

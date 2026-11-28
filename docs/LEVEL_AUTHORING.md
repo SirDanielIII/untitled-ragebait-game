@@ -238,7 +238,7 @@ Basic hazards (respawn at the last checkpoint), checkpoints and stage completion
 1. Copy a numbered level folder, for example `game/src/levels/level_1/` to `level_4/`. Rename its header, implementation and events file for the new level. Update the includes and use `Level4`, `Level4Definition`, `MakeLevel4` and `LevelId::Level4` throughout.
 2. Add an explicit `LevelId` value in `levels/level.h`; preserve the existing numeric values used by saved settings.
 3. Declare `Level4Definition` and `MakeLevel4` in `levels/level.h`, then add `{Level4Definition, MakeLevel4}` to `registrations` in `main.cpp`. This list drives both loading and the level selector.
-4. Extend the `session.last_level` range in `engine/config/config.cpp`.
+4. Keep the numeric level ID stable for `game.yaml`; no YAML range change is needed.
 5. Choose an existing `.backdrop`, or add an `ArtId::Level4` entry before `ArtId::Count` and its matching path to `artPaths` in `engine/resources/asset_paths.h`. Keep the enum and path array in the same order. Export the optional PNG to `game/resources/art/levels/level_4.png`. For a distinct fallback illustration, extend `art::LevelBackdrop` in `engine/graphics/placeholder_art.cpp`.
 6. Adjust `LevelSelectItems` and `DrawLevelSelect` in `ui/menus/menus.cpp` to fit the new entry; the current layout has space for four level buttons before the Back button.
 7. Build normally: CMake discovers the new source and any helpers under its folder automatically. Registration in `main.cpp` is still required to make a level selectable. Run the tests in [CODE_GUIDE.md](CODE_GUIDE.md); their level loops use `LevelCatalog()` and will include the new entry. Add checks for any new gameplay mechanics.
@@ -250,3 +250,19 @@ Menu layouts are in `ui/menus/menus.cpp`. Shared controls are in `ui/`; navigati
 Use `DrawTextFit(resources, ...)`, `DrawParagraph(resources, ...)` or `resources.DrawText(...)` for UI text. They use the shared font on the fixed 1600 by 900 canvas. Use `resources.BeginClip(...)` for a clip rectangle in canvas coordinates.
 
 Font selection, PNG paths and resource copying are covered in [ART_ASSETS.md](ART_ASSETS.md).
+
+## Shared collision system
+
+`GameObjectDefinition.id` is a nonempty unique instance ID. Contacts expose that string in `CollisionContact.objectId` and `EventNotification.objectId`; `ObjectNotificationId(id)` provides a stable FNV-1a numeric ID for existing event predicates. `Player::LastCollision()` exposes the most recent step's contacts and normals, and `LastDamageSource()` survives respawn for death animations. A full level restart clears it.
+
+Choose `collision` independently of `type`, `assetId` and visibility: `Solid` blocks every side, `OneWay` blocks descending top crossings, `Hazard` detects contact, `Trigger` detects contact without blocking, and `None` is decorative. `collisionOffset` and `collisionSize` are independent of art; a zero size pair defaults to the object's size. `filter.layer` and `filter.mask` must match in both directions to interact. Moving colliders supply previous and current rectangles for each simulation step.
+
+`objectEvents::contactEntered` and `contactExited` report contact changes. Triggers also post `triggerEntered`, and hazards post `hazardHit`. Persistent overlap does not repeat entry or damage. Repeatable sensors rearm after exit; `triggerOnce` deactivates the object after entry. A hazard defaults to lethal; set `lethal = false` and `damage` for health damage, with `player.max_health` in config. Fatal contacts respawn at the checkpoint. Moving-solid crushes also respawn rather than leaving the player embedded.
+
+Moving platforms carry riders, including downward motion, and release them on jump. Objects follow kinematic paths by default. Set `collideWithEnvironment = true` to resolve object motion against other solid/one-way geometry with the same solver. Falling objects then finish their action when they land on geometry, or at their configured travel limit. `OnBlocked` is a response hook for behavior such as reversing a moving obstacle; it does not implement detection.
+
+`LevelDefinition.sideBoundaries`, `ceilingBoundary` and `bottomKillZone` control generated boundaries. The default bottom kill zone begins 100 pixels below the world. Disable it and author explicit hazard zones for a different fall rule. There is no implicit bottom floor. `CollisionSystem::SetStaticScene` is the legacy rectangle adapter and likewise only adds sides and a ceiling.
+
+Existing scripted Level 1 hazards and Level 2 birds publish their geometry through `Level::ScriptContact`. Shared detection and entry tracking provide named contact events and debug outlines while the script retains its response (bounce, slide, restart). Gas uses an AABB around its drawn cloud. New reusable obstacles should use object definitions. Recycled scripted objects must receive new instance IDs; pigs and gas use monotonic spawn IDs.
+
+Use `debug.show_hitboxes: true` in config to inspect boxes and IDs. The automated collision tests cover all directions, thin fast crossings, one-way surfaces, overlap recovery, moving platforms, pushes/crushes, falling-object landings, filters, damage on entry, kill zones, and level spawn grounding across 30/60/144/240 FPS.

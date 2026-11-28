@@ -206,6 +206,11 @@ void TestPlayerAnimationState()
         "Stopping should idle and keep facing");
     level->Update(0.05f, {.jump = true}, config);
     Check(level->PlayerAnimator().State() == "jump", "Jumping did not select the jump state");
+    level->Reset(config);
+    level->Update(0.05f, {.duck = true}, config);
+    Check(level->PlayerAnimator().State() == "crouch", "Crouching did not select its future sprite state");
+    level->Update(0.05f, {.move = 1, .duck = true}, config);
+    Check(level->PlayerAnimator().State() == "crouch_walk", "Crouch movement did not select its sprite state");
 }
 
 bool Same(Color a, Color b) { return a.r == b.r && a.g == b.g && a.b == b.b; }

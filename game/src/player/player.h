@@ -1,8 +1,10 @@
 #pragma once
 
 #include "engine/config/config.h"
+#include "engine/collision/collision_system.h"
 #include "engine/input/input.h"
 #include "raylib.h"
+#include <optional>
 #include <span>
 
 namespace rage {
@@ -10,18 +12,36 @@ namespace rage {
     class Player {
     public:
         void Reset(Vector2 spawn);
+        void Reset(Vector2 spawn, const GameConfig &config);
         void Bounce(Vector2 launchVelocity);
+        // Consumed by the level to emit a burst at the actual takeoff point.
+        std::optional<Vector2> TakeCrouchJump();
 
         void Update(float dt, const InputFrame &input, const GameConfig &config,
                     std::span<const Rectangle> platforms, Rectangle world,
                     std::span<const Rectangle> oneWayPlatforms = {});
 
-        Rectangle Bounds() const { return {position.x, position.y, 30.0f, 44.0f}; }
+        void Update(float dt, const InputFrame &input, const GameConfig &config, CollisionSystem &collisions);
+        const CollisionResult &LastCollision() const { return lastCollision; }
+        const std::string &LastDamageSource() const { return lastDamageSource; }
+        void RecordDamageSource(std::string id) { lastDamageSource = std::move(id); }
+
+        Rectangle Bounds() const { return {position.x + collisionOffset.x, position.y + collisionOffset.y, standingSize.x, bodyHeight}; }
+        Rectangle StandingBounds() const {
+            return {position.x + collisionOffset.x, position.y + collisionOffset.y + bodyHeight - standingSize.y, standingSize.x, standingSize.y};
+        }
+        Rectangle VisualBounds() const { return {position.x, position.y, standingSize.x, bodyHeight}; }
+        Rectangle VisualStandingBounds() const {
+            return {position.x, position.y + bodyHeight - standingSize.y, standingSize.x, standingSize.y};
+        }
         Vector2 Position() const { return position; }
         Vector2 Velocity() const { return velocity; }
         bool Grounded() const { return grounded; }
         bool Climbing() const { return climbing; }
-        float StaminaPercent() const { return stamina / 100.0f; }
+        bool Crouching() const { return crouching; }
+        bool Exhausted() const { return exhausted; }
+        bool LowStamina(const GameConfig &config) const { return StaminaPercent() < config.lowStaminaThreshold; }
+        float StaminaPercent() const { return StaminaPercent(staminaCapacity); }
         float StaminaPercent(float maxStamina) const { return maxStamina > 0.0f ? stamina / maxStamina : 0.0f; }
         void TakeDamage(int amount);
         void ApplyKnockback(Vector2 force);
@@ -32,14 +52,24 @@ namespace rage {
         PlayerState State() const;
 
     private:
+        Vector2 collisionOffset{};
+        CollisionResult lastCollision;
+        std::string lastDamageSource;
         Vector2 position = {};
         Vector2 velocity = {};
         bool grounded = false;
         bool climbing = false;
+        bool crouching = false;
+        bool exhausted = false;
+        Vector2 standingSize = {GameConfig{}.standingWidth, GameConfig{}.standingHeight};
+        float bodyHeight = GameConfig{}.standingHeight;
         float climbLockSeconds = 0.0f;
-        float stamina = 100.0f;
+        float bounceClimbLock = GameConfig{}.bounceClimbLock;
+        float staminaCapacity = GameConfig{}.maxStamina;
+        float stamina = GameConfig{}.maxStamina;
         int maxHealth = 1;
         int health = 1;
         float moveInput = 0.0f;
+        std::optional<Vector2> crouchJumpOrigin;
     };
 }

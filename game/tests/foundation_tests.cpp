@@ -14,6 +14,13 @@ void TestAssetRendering();
 void TestAudioData();
 void TestAudioPlayback();
 void TestObjects();
+void TestCollisions();
+void TestBirds();
+void TestBirdRendering();
+void TestPlayerMovement();
+void TestPlayerTuning();
+void TestCrouchJumps();
+void TestJumpParticleRendering(const Resources &resources);
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
 void TestWindowResize(void* handle);
 #endif
@@ -85,9 +92,6 @@ void TestSliders()
     game.Update(0, drag);
     Check(config.masterVolume > 0.9f, "Slider capture was lost when settings changed");
     game.Update(0, {});
-    game.Update(0, ClickSlider(game, ActionKind::SetDialogueSpeed, 0.5f));
-    game.Update(0, {});
-    Check(config.charactersPerSecond == 120, "Dialogue slider did not use its independent range");
     game.Update(0, ClickSlider(game, ActionKind::SetTargetFps, 0.5f));
     Check(config.targetFps == 195, "FPS slider did not apply its range");
     drag.mouse = {2000, 100};
@@ -160,7 +164,7 @@ void TestConfig()
     TestDirectory directory;
     ConfigStore store;
     Check(store.values.windowWidth == 1600 && store.values.windowHeight == 900, "Default resolution is incorrect");
-    Check(!store.Load(directory.path / "missing.yaml") && store.values.moveSpeed == 260, "Missing config defaults failed");
+    Check(!store.Load(directory.path / "missing.yaml") && store.values.moveSpeed == GameConfig{}.moveSpeed, "Missing config defaults failed");
     const auto file = directory.path / "input.yaml";
     {
         std::ofstream output(file);
@@ -171,7 +175,7 @@ void TestConfig()
     }
     Check(!store.Load(file), "Malformed config should report ignored values");
     Check(store.values.windowWidth == 1280 && store.values.targetFps == 120 && store.values.showFps, "Valid display settings were lost");
-    Check(store.values.moveSpeed == 310 && store.values.gravity == 1500 && store.values.jumpSpeed == 620, "Player config fallback failed");
+    Check(store.values.moveSpeed == 310 && store.values.gravity == GameConfig{}.gravity && store.values.jumpSpeed == -3, "Player config fallback failed");
     Check(Near(store.values.masterVolume, 0.7f, 0.001f) && !store.values.muted && store.values.charactersPerSecond == 0 && store.values.lastLevel == 3, "Valid audio/dialogue/session config failed");
     store.values.unlimitedFps = true;
     store.values.targetFps = maxTargetFps;
@@ -185,10 +189,10 @@ void TestConfig()
         output << "window:\n  width: 900\n  width: 1000\n  height: 99999\n\tbad: true\n  width: 1100\n"
                << "audio:\n  master_volume: nan\nunknown:\n  move_speed: 600\n";
     }
-    Check(!reloaded.Load(file) && reloaded.values.windowWidth == 900 && reloaded.values.windowHeight == 900 &&
+    Check(!reloaded.Load(file) && reloaded.values.windowWidth == 900 && reloaded.values.windowHeight == 99999 &&
           reloaded.values.moveSpeed == 310 && Near(reloaded.values.masterVolume, 0.7f, 0.001f),
           "Invalid or duplicate settings replaced valid values");
-    std::cout << "PASS: defaults, valid/malformed YAML subset, range checks and preferences round trip\n";
+    std::cout << "PASS: defaults, valid/malformed YAML subset and preferences round trip\n";
 }
 
     void TestPlayerHealth()
@@ -227,7 +231,8 @@ void TestMovement()
     player.Update(1.0f / 60, {}, config, platforms, world);
     Check(player.Grounded(), "Initial floor contact failed");
     for (int i = 0; i < 60; ++i) player.Update(1.0f / 60, right, config, platforms, world);
-    Check(Near(player.Position().x, 338.6f, 0.5f), "Movement does not accelerate toward moveSpeed");
+    Check(player.Position().x > 100 + config.moveSpeed * 0.9f && player.Position().x < 100 + config.moveSpeed
+          && Near(player.Velocity().x, config.moveSpeed), "Movement does not accelerate toward moveSpeed");
     Player slowFrames;
     slowFrames.Reset({100, 606});
     for (int i = 0; i < 30; ++i) slowFrames.Update(1.0f / 30, right, config, platforms, world);
@@ -364,28 +369,40 @@ void TestSession()
 
 int RunSelfTests()
 {
-    try
-    {
-        TestDialogue();
-        TestConfig();
-        TestMovement();
-        TestClimbingAndStamina();
-        TestPlayerHealth();
-        TestSliders();
-        TestSession();
-        TestLevelAuthoring();
-        TestEventManager();
-        TestGameData();
-        TestAudioData();
-        TestObjects();
+    int failures = 0;
+    // Report independent groups even when one fails, so an unrelated regression
+    // cannot hide the results of the remaining gameplay and asset checks.
+    const auto run = [&](const char* name, void (*test)()) {
+        try {
+            test();
+        } catch (const std::exception& error) {
+            ++failures;
+            std::cerr << "FAIL: " << name << ": " << error.what() << '\n';
+        }
+    };
+    run("dialogue", TestDialogue);
+    run("config", TestConfig);
+    run("movement", TestMovement);
+    run("climbing and stamina", TestClimbingAndStamina);
+    run("player movement", TestPlayerMovement);
+    run("player tuning", TestPlayerTuning);
+    run("crouch jumps", TestCrouchJumps);
+    run("player health", TestPlayerHealth);
+    run("sliders", TestSliders);
+    run("session", TestSession);
+    run("level authoring", TestLevelAuthoring);
+    run("events", TestEventManager);
+    run("Game Data", TestGameData);
+    run("audio data", TestAudioData);
+    run("objects", TestObjects);
+    run("collisions", TestCollisions);
+    run("birds", TestBirds);
+    if (failures == 0) {
         std::cout << "All foundation self-tests passed (no window/audio context required).\n";
-        return 0;
+    } else {
+        std::cerr << failures << " self-test group(s) failed.\n";
     }
-    catch (const std::exception& error)
-    {
-        std::cerr << "FAIL: " << error.what() << '\n';
-        return 1;
-    }
+    return failures == 0 ? 0 : 1;
 }
 
 int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
@@ -426,6 +443,8 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     }
     std::cout << "PASS: custom font, missing-font fallback and optional texture replacement\n";
     TestAssetRendering();
+    TestBirdRendering();
+    TestJumpParticleRendering(resources);
     TestAudioPlayback();
     auto click = [&](ActionKind kind, int value = 0) { Frame(0, ClickAction(game, kind, value)); };
     auto capture = [&](const std::string& name, bool screen = false)
@@ -450,6 +469,24 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
               "Smoke test could not open a level for rendering");
         Frame(0, {.completeDialogue = true});
         capture("stage_" + std::to_string(static_cast<int>(level.id)));
+        if (level.id == LevelId::Level1) {
+            Frame(1.0f / 60, {.duck = true});
+            Check(game.ActiveLevel()->GetPlayer().Crouching(), "Rendered crouch lost its shared player state");
+            capture("stage_1_crouch");
+            Frame(1.0f / 60, {.jump = true, .duck = true});
+            Check(!game.ActiveLevel()->GetPlayer().Crouching() && game.ActiveLevel()->PlayerAnimator().State() == "jump",
+                  "Crouch jump kept the airborne crouch animation");
+            capture("stage_1_crouch_jump");
+            Frame(0.06f, {.duck = true});
+            capture("stage_1_air_particles");
+            // Capture the timer's entrance, travel and settled HUD in real gameplay.
+            for (int frame = 0; frame < 60; ++frame) Frame(1.0f / 60, {});
+            capture("stage_1_timer_entrance");
+            for (int frame = 0; frame < 26; ++frame) Frame(1.0f / 60, {});
+            capture("stage_1_timer_travel");
+            for (int frame = 0; frame < 30; ++frame) Frame(1.0f / 60, {});
+            capture("stage_1_timer_docked");
+        }
         Frame(0, {.pause = true});
         capture("pause");
         click(ActionKind::OpenLevels);

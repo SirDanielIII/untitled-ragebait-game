@@ -2,6 +2,7 @@
 
 #include "levels/level.h"
 #include "levels/level_1/fake_timer.h"
+#include "objects/bird.h"
 
 #include <array>
 #include <cstdint>
@@ -41,11 +42,13 @@ namespace rage {
             float speed = 165;
             float steerSeconds = 0;
             float fartSeconds = 0;
+            std::uint64_t id = 0;
         };
 
         struct GasPuff {
             Vector2 center;
             float age = 0;
+            std::uint64_t id = 0;
         };
 
         void OnReset() override;
@@ -64,8 +67,8 @@ namespace rage {
         Rectangle WreckBody(std::size_t roof, float* progress = nullptr) const;
         // Only text: every drawing is an object now, so words stay on top of sprites.
         void DrawWorldFront(const Resources& resources) const override;
+        void SubmitSprites(RenderQueue& queue, const Resources& resources) const override;
         void DrawHud(const Resources& resources) const override;
-        float PlayerDuckBlend() const override { return duckBlend; }
         std::vector<Event> CreateEvents();
         void Respawn(const char* notification);
         void ResetTraffic();
@@ -78,6 +81,8 @@ namespace rage {
         float speederDelay = 0.0f;
         std::vector<FlyingPig> pigs;
         std::vector<GasPuff> gasPuffs;
+        std::array<Bird, 3> birds;
+        std::uint64_t nextHazardId = 1;
         float pigSpawnSeconds = 0;
         float birdCooldown = 0;
         bool crashImpact = false;
@@ -86,11 +91,9 @@ namespace rage {
 
         Vector2 checkpoint = {};
         float collisionCooldown = 0.0f;
-        float duckBlend = 0.0f;
         float pileupSeconds = 0.0f;
         float slideProgress = 0.0f;
         float chickenX = 0.0f;
-        float previousAnvilY = 0.0f;
         float anvilLandedAt = 0.0f;
         int collisionCount = 0;
         bool roadCheckpointReached = false;

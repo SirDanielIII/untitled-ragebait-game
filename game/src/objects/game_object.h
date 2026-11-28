@@ -4,6 +4,7 @@
 #include "engine/assets/asset_manager.h"
 #include "engine/assets/render_queue.h"
 #include "raylib.h"
+#include "engine/collision/collision_system.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -17,28 +18,24 @@ namespace rage {
         Trigger
     };
 
-    enum class CollisionType {
-        None,
-        Solid,
-        Hazard,
-        Trigger,
-        OneWay // Land on the top only; pass through from below and the sides.
-    };
-
     // Topics objects post to the level's EventManager (see
     // levels/event_manager.h). An event matches a topic and the
     // sourceId below, exactly like the dialogue milestones do.
     namespace objectEvents {
+        inline constexpr char contactEntered[] = "object.contact_entered";
+        inline constexpr char contactExited[] = "object.contact_exited";
         inline constexpr char triggerEntered[] = "object.trigger_entered";
         inline constexpr char hazardHit[] = "object.hazard_hit";
         inline constexpr char activated[] = "object.activated";
         inline constexpr char actionCompleted[] = "object.action_completed";
     }
 
-    // EventNotification.sourceId for an object id. The EventManager
-    // only carries a number, so ids are hashed to one.
+    // Stable EventNotification.sourceId for numeric event predicates.
+    // EventNotification.objectId also carries the readable instance ID.
     inline std::uint64_t ObjectNotificationId(const std::string &id) {
-        return static_cast<std::uint64_t>(std::hash<std::string>{}(id));
+        std::uint64_t hash = 14695981039346656037ull;
+        for (unsigned char c : id) { hash ^= c; hash *= 1099511628211ull; }
+        return hash;
     }
 
     // Data for one object. Levels list these; they do not create a new
@@ -79,6 +76,11 @@ namespace rage {
         bool visible = true;
         // Triggers and one-shot hazards deactivate after firing once.
         bool triggerOnce = false;
+        CollisionFilter filter{collisionLayers::environment, collisionLayers::all};
+        int damage = 1;
+        bool lethal = true;
+        // Kinematic paths push actors; opt in to blocking against the environment.
+        bool collideWithEnvironment = false;
         // What to draw while the Asset ID has no Game Data row yet: true
         // draws the placeholder box, false draws nothing. Use false when
         // the level still draws its own stand-in shape (Level 1's
@@ -165,6 +167,11 @@ namespace rage {
 
         const std::string &Id() const { return definition.id; }
         ObjectType Type() const { return definition.type; }
+        CollisionFilter Filter() const { return definition.filter; }
+        int Damage() const { return definition.damage; }
+        bool Lethal() const { return definition.lethal; }
+        bool CollidesWithEnvironment() const { return definition.collideWithEnvironment; }
+        virtual void OnBlocked(const CollisionResult &) {}
         CollisionType Collision() const { return definition.collision; }
 
         Vector2 Position() const { return position; }

@@ -51,6 +51,7 @@ namespace rage {
         bool IsTriggered(const std::string &id) const;
 
         void UpdateAll(float dt);
+        std::vector<Collider> Colliders() const;
         // Queues every visible object's sprite on its Game Data layer.
         // `placeholder` is passed through to each object (see
         // GameObject::SubmitSprites).
@@ -72,5 +73,6 @@ namespace rage {
 
     private:
         std::vector<std::unique_ptr<GameObject>> objects;
+        std::unordered_map<std::string, Rectangle> previousBounds;
     };
 }
