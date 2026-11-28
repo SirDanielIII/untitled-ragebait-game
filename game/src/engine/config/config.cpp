@@ -12,25 +12,58 @@
 
 namespace rage {
     namespace {
+        struct PlayerSetting {
+            std::string_view key;
+            float GameConfig::*field;
+        };
+
+        // One registry keeps player tuning and serialization in sync.
+        constexpr PlayerSetting playerSettings[] = {
+            {"move_speed", &GameConfig::moveSpeed},
+            {"ground_acceleration", &GameConfig::groundAcceleration},
+            {"counter_strafe_acceleration", &GameConfig::counterStrafeAcceleration},
+            {"ground_friction", &GameConfig::groundFriction},
+            {"start_speed", &GameConfig::startSpeed},
+            {"jump_speed", &GameConfig::jumpSpeed},
+            {"gravity", &GameConfig::gravity},
+            {"climb_speed", &GameConfig::climbSpeed},
+            {"climb_contact_distance", &GameConfig::climbContactDistance},
+            {"bounce_climb_lock", &GameConfig::bounceClimbLock},
+            {"standing_width", &GameConfig::standingWidth},
+            {"standing_height", &GameConfig::standingHeight},
+            {"crouch_height_multiplier", &GameConfig::crouchHeightMultiplier},
+            {"crouch_speed_multiplier", &GameConfig::crouchSpeedMultiplier},
+            {"crouch_jump_multiplier", &GameConfig::crouchJumpMultiplier},
+            {"max_stamina", &GameConfig::maxStamina},
+            {"climb_stamina_drain", &GameConfig::climbStaminaDrain},
+            {"jump_stamina_cost", &GameConfig::jumpStaminaCost},
+            {"crouch_jump_stamina_cost", &GameConfig::crouchJumpStaminaCost},
+            {"crouch_stamina_drain", &GameConfig::crouchStaminaDrain},
+            {"stamina_regen", &GameConfig::staminaRegen},
+            {"low_stamina_threshold", &GameConfig::lowStaminaThreshold},
+            {"exhaustion_recovery_threshold", &GameConfig::exhaustionRecoveryThreshold},
+            {"exhausted_speed_multiplier", &GameConfig::exhaustedSpeedMultiplier},
+        };
+
         std::string Trim(std::string text) {
             const auto first = text.find_first_not_of(" \r\n");
             if (first == std::string::npos) return {};
             return text.substr(first, text.find_last_not_of(" \r\n") - first + 1);
         }
 
-        bool Number(const std::string &text, int &output, int low, int high) {
+        bool Number(const std::string &text, int &output) {
             int value = 0;
             const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
-            if (result.ec != std::errc{} || result.ptr != text.data() + text.size() || value < low || value > high) return false;
+            if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) return false;
             output = value;
             return true;
         }
 
-        bool Number(const std::string &text, float &output, float low, float high) {
+        bool Number(const std::string &text, float &output) {
             std::istringstream input(text);
             input.imbue(std::locale::classic());
             float value = 0.0f;
-            if (!(input >> value) || !input.eof() || !std::isfinite(value) || value < low || value > high) return false;
+            if (!(input >> value) || !input.eof() || !std::isfinite(value)) return false;
             output = value;
             return true;
         }
@@ -42,7 +75,7 @@ namespace rage {
         }
     }
 
-    bool ConfigStore::Load(const std::filesystem::path &path, bool optional) {
+    bool ConfigStore::Load(const std::filesystem::path &path, bool optional, bool preferencesOnly) {
         std::ifstream file(path);
         if (!file) {
             if (!optional) diagnostics.push_back("Cannot read " + path.string() + "; using defaults.");
@@ -82,25 +115,32 @@ namespace rage {
                 continue;
             }
             const std::string fullKey = section + "." + key;
+            // Old settings files included gameplay values. They must not mask tuning edits.
+            if (preferencesOnly && section == "player") continue;
             if (section.empty() || !seen.insert(fullKey).second) {
                 reject();
                 continue;
             }
             bool accepted = false;
-            if (fullKey == "window.width") accepted = Number(value, values.windowWidth, 640, 3840);
-            else if (fullKey == "window.height") accepted = Number(value, values.windowHeight, 480, 2160);
-            else if (fullKey == "window.target_fps") accepted = Number(value, values.targetFps, minTargetFps, maxTargetFps);
+            if (fullKey == "window.width") accepted = Number(value, values.windowWidth);
+            else if (fullKey == "window.height") accepted = Number(value, values.windowHeight);
+            else if (fullKey == "window.target_fps") accepted = Number(value, values.targetFps);
             else if (fullKey == "window.unlimited_fps") accepted = Boolean(value, values.unlimitedFps);
             else if (fullKey == "window.show_fps") accepted = Boolean(value, values.showFps);
-            else if (fullKey == "audio.master_volume") accepted = Number(value, values.masterVolume, 0.0f, 1.0f);
+            else if (fullKey == "audio.master_volume") accepted = Number(value, values.masterVolume);
             else if (fullKey == "audio.muted") accepted = Boolean(value, values.muted);
-            else if (fullKey == "audio.music_volume") accepted = Number(value, values.musicVolume, 0.0f, 1.0f);
-            else if (fullKey == "audio.sfx_volume") accepted = Number(value, values.sfxVolume, 0.0f, 1.0f);
-            else if (fullKey == "player.move_speed") accepted = Number(value, values.moveSpeed, 50.0f, 800.0f);
-            else if (fullKey == "player.jump_speed") accepted = Number(value, values.jumpSpeed, 100.0f, 1200.0f);
-            else if (fullKey == "player.gravity") accepted = Number(value, values.gravity, 200.0f, 4000.0f);
-            else if (fullKey == "dialogue.characters_per_second") accepted = Number(value, values.charactersPerSecond, 0.0f, 240.0f);
-            else if (fullKey == "session.last_level") accepted = Number(value, values.lastLevel, 0, 3);
+            else if (fullKey == "audio.music_volume") accepted = Number(value, values.musicVolume);
+            else if (fullKey == "audio.sfx_volume") accepted = Number(value, values.sfxVolume);
+            else if (section == "player") {
+                for (const auto &setting: playerSettings) {
+                    if (setting.key == key) {
+                        accepted = Number(value, values.*(setting.field));
+                        break;
+                    }
+                }
+            }
+            else if (fullKey == "dialogue.characters_per_second") accepted = Number(value, values.charactersPerSecond);
+            else if (fullKey == "session.last_level") accepted = Number(value, values.lastLevel);
             if (!accepted) reject();
         }
         if (file.bad()) {
@@ -110,7 +150,7 @@ namespace rage {
         return valid;
     }
 
-    bool ConfigStore::Save(const std::filesystem::path &path) {
+    bool ConfigStore::Save(const std::filesystem::path &path, bool preferencesOnly) {
         std::error_code error;
         if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path(), error);
         if (error) {
@@ -120,14 +160,17 @@ namespace rage {
         std::ofstream file(path);
         file.imbue(std::locale::classic());
         file << std::setprecision(6)
-                << "# User preferences; no gameplay progress or unlocks are stored.\n"
+                << "# Settings; no gameplay progress or unlocks are stored.\n"
                 << "window:\n  width: " << values.windowWidth << "\n  height: " << values.windowHeight
                 << "\n  target_fps: " << values.targetFps << "\n  unlimited_fps: " << (values.unlimitedFps ? "true" : "false")
                 << "\n  show_fps: " << (values.showFps ? "true" : "false")
                 << "\naudio:\n  master_volume: " << values.masterVolume << "\n  muted: " << (values.muted ? "true" : "false")
-                << "\n  music_volume: " << values.musicVolume << "\n  sfx_volume: " << values.sfxVolume
-                << "\nplayer:\n  move_speed: " << values.moveSpeed << "\n  jump_speed: " << values.jumpSpeed << "\n  gravity: " << values.gravity
-                << "\ndialogue:\n  characters_per_second: " << values.charactersPerSecond
+                << "\n  music_volume: " << values.musicVolume << "\n  sfx_volume: " << values.sfxVolume;
+        if (!preferencesOnly) {
+            file << "\nplayer:";
+            for (const auto &setting: playerSettings) file << "\n  " << setting.key << ": " << values.*(setting.field);
+        }
+        file << "\ndialogue:\n  characters_per_second: " << values.charactersPerSecond
                 << "\nsession:\n  last_level: " << values.lastLevel << '\n';
         file.flush();
         if (!file) {

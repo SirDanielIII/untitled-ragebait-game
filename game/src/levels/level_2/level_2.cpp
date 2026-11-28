@@ -1,24 +1,9 @@
-
 #include "levels/level_2/level_2.h"
 
-#include <algorithm>
 #include <cmath>
 #include <utility>
 
 namespace rage {
-
-    namespace {
-        bool Overlaps(Rectangle a, Rectangle b) {
-            return CheckCollisionRecs(a, b);
-        }
-
-        constexpr float BIRD_WIDTH = 38.0f;
-        constexpr float BIRD_HEIGHT = 22.0f;
-        constexpr float SWOOP_DURATION = 0.8f;
-        constexpr float SWOOP_DISTANCE = 100.0f;
-        constexpr float KNOCKBACK_X = 420.0f;
-        constexpr float KNOCKBACK_Y = -280.0f;
-    }
 
     const LevelDefinition &Level2Definition() {
         static const LevelDefinition definition{
@@ -119,182 +104,45 @@ namespace rage {
         return definition;
     }
 
-    Level2::Level2() : Level(Level2Definition()) {
+    Level2::Level2() : Level(Level2Definition()), birds{
+        Bird(PatrolFlight{{250, 1200}, 150, 200, 520, 1.5f}),
+        Bird(PatrolFlight{{650, 1080}, 170, 500, 850, 2.0f, false}),
+        Bird(PatrolFlight{{400, 1000}, 160, 250, 650, 2.5f}),
+        Bird(PatrolFlight{{500, 900}, 180, 350, 750, 2.5f}),
+        Bird(PatrolFlight{{750, 760}, 190, 600, 900, 2.0f, false}),
+        Bird(PatrolFlight{{300, 620}, 200, 200, 550, 2.5f}),
+        Bird(PatrolFlight{{800, 580}, 210, 650, 950, 3.0f, false}),
+        Bird(PatrolFlight{{700, 480}, 210, 550, 900, 3.0f, false}),
+        Bird(PatrolFlight{{450, 350}, 220, 350, 750, 2.5f}),
+        Bird(PatrolFlight{{650, 180}, 240, 500, 900, 3.5f, false})
+    } {
         for (auto &event : CreateEvents()) {
             Events().RegisterEvent(std::move(event));
         }
     }
 
-
     void Level2::OnReset() {
-        birds = {{
-            // Lower bird 1
-            {{250, 1200, BIRD_WIDTH, BIRD_HEIGHT},
-             150.0f, 200.0f, 520.0f, 1200.0f,
-             1.5f, 0.0f, 0.0f, true, false},
-
-            // Lower bird 2
-            {{650, 1080, BIRD_WIDTH, BIRD_HEIGHT},
-             170.0f, 500.0f, 850.0f, 1080.0f,
-             2.0f, 0.0f, 0.0f, false, false},
-
-            // Lower bird 3
-            {{400, 1000, BIRD_WIDTH, BIRD_HEIGHT},
-             160.0f, 250.0f, 650.0f, 1000.0f,
-             2.5f, 0.0f, 0.0f, true, false},
-
-            // Middle bird 1
-            {{500, 900, BIRD_WIDTH, BIRD_HEIGHT},
-             180.0f, 350.0f, 750.0f, 900.0f,
-             2.5f, 0.0f, 0.0f, true, false},
-
-            // Middle bird 2
-            {{750, 760, BIRD_WIDTH, BIRD_HEIGHT},
-             190.0f, 600.0f, 900.0f, 760.0f,
-             2.0f, 0.0f, 0.0f, false, false},
-
-            // Middle bird 3
-            {{300, 620, BIRD_WIDTH, BIRD_HEIGHT},
-             200.0f, 200.0f, 550.0f, 620.0f,
-             2.5f, 0.0f, 0.0f, true, false},
-
-            // Middle bird 4
-            {{800, 580, BIRD_WIDTH, BIRD_HEIGHT},
-             210.0f, 650.0f, 950.0f, 580.0f,
-             3.0f, 0.0f, 0.0f, false, false},
-
-            // Upper bird 1
-            {{700, 480, BIRD_WIDTH, BIRD_HEIGHT},
-             210.0f, 550.0f, 900.0f, 480.0f,
-             3.0f, 0.0f, 0.0f, false, false},
-
-            // Upper bird 2
-            {{450, 350, BIRD_WIDTH, BIRD_HEIGHT},
-             220.0f, 350.0f, 750.0f, 350.0f,
-             2.5f, 0.0f, 0.0f, true, false},
-
-            // Rooftop bird
-            {{650, 180, BIRD_WIDTH, BIRD_HEIGHT},
-             240.0f, 500.0f, 900.0f, 180.0f,
-             3.5f, 0.0f, 0.0f, false, false}
-        }};
+        for (auto& bird : birds) bird.Reset();
     }
 
     void Level2::OnUpdate(float dt, const InputFrame &) {
         if (!std::isfinite(dt) || dt <= 0.0f) return;
-
         const Rectangle playerBounds = GetPlayer().Bounds();
-        const Vector2 playerPosition = GetPlayer().Position();
-
-        for (auto &bird : birds) {
-            bird.swoopCooldown -= dt;
-            bird.attackCooldown = std::max(0.0f, bird.attackCooldown - dt);
-
-            // Horizontal patrol.
-            bird.bounds.x += (bird.facingRight ? 1.0f : -1.0f)
-                             * bird.speed * dt;
-
-            if (bird.bounds.x >= bird.patrolRight) {
-                bird.bounds.x = bird.patrolRight;
-                bird.facingRight = false;
-            } else if (bird.bounds.x <= bird.patrolLeft) {
-                bird.bounds.x = bird.patrolLeft;
-                bird.facingRight = true;
-            }
-
-            // Start a swoop when the player is nearby.
-            const float distanceX = std::abs(
-                (playerBounds.x + playerBounds.width / 2.0f)
-                - (bird.bounds.x + bird.bounds.width / 2.0f));
-
-            const float distanceY = std::abs(
-                (playerBounds.y + playerBounds.height / 2.0f)
-                - (bird.bounds.y + bird.bounds.height / 2.0f));
-
-            if (!bird.swooping && bird.swoopCooldown <= 0.0f
-                && distanceX < 260.0f && distanceY < 220.0f) {
-                bird.swooping = true;
-                bird.swoopTimer = 0.0f;
-                bird.swoopCooldown = 3.5f;
-            }
-
-            // Dive downward, then return to normal flying height.
-            if (bird.swooping) {
-                bird.swoopTimer += dt;
-
-                const float progress = std::clamp(
-                    bird.swoopTimer / SWOOP_DURATION, 0.0f, 1.0f);
-
-                bird.bounds.y = bird.homeY
-                    + std::sin(progress * PI) * SWOOP_DISTANCE;
-
-                if (progress >= 1.0f) {
-                    bird.swooping = false;
-                    bird.bounds.y = bird.homeY;
-                }
-            }
-
-            // Hit the player.
-            if (bird.attackCooldown <= 0.0f
-                && Overlaps(bird.bounds, playerBounds)) {
-
-                const float playerCenter =
-                    playerBounds.x + playerBounds.width / 2.0f;
-
-                const float birdCenter =
-                    bird.bounds.x + bird.bounds.width / 2.0f;
-
-                const float direction =
-                    playerCenter < birdCenter ? -1.0f : 1.0f;
-
-                MutablePlayer().ApplyKnockback({
-                    direction * KNOCKBACK_X,
-                    KNOCKBACK_Y
-                });
-
-                bird.attackCooldown = 1.0f;
-                bird.swooping = false;
-                bird.bounds.y = bird.homeY;
+        for (auto& bird : birds) {
+            bird.Update(dt, ElapsedSeconds(), playerBounds);
+            const Rectangle bounds = bird.Bounds();
+            if (bird.TryAttack(playerBounds)) {
+                const float playerCenter = playerBounds.x + playerBounds.width / 2.0f;
+                const float birdCenter = bounds.x + bounds.width / 2.0f;
+                const float direction = playerCenter < birdCenter ? -1.0f : 1.0f;
+                MutablePlayer().ApplyKnockback({direction * 420.0f, -280.0f});
             }
         }
     }
 
-    void Level2::DrawWorld(const Resources &) const {
-        for (const auto &bird : birds) {
-            const float centerX = bird.bounds.x + bird.bounds.width / 2.0f;
-            const float centerY = bird.bounds.y + bird.bounds.height / 2.0f;
-
-            // Body and head.
-            DrawEllipse(static_cast<int>(centerX),
-                        static_cast<int>(centerY),
-                        16.0f, 9.0f, DARKGRAY);
-
-            DrawCircle(static_cast<int>(centerX + (bird.facingRight ? 12 : -12)),
-                       static_cast<int>(centerY - 5),
-                       6.0f, BLACK);
-
-            // Beak.
-            if (bird.facingRight) {
-                DrawTriangle(
-                    {centerX + 17, centerY - 6},
-                    {centerX + 27, centerY - 3},
-                    {centerX + 17, centerY},
-                    ORANGE
-                );
-            } else {
-                DrawTriangle(
-                    {centerX - 17, centerY - 6},
-                    {centerX - 27, centerY - 3},
-                    {centerX - 17, centerY},
-                    ORANGE
-                );
-            }
-
-            // Wing.
-            DrawEllipse(static_cast<int>(centerX),
-                        static_cast<int>(centerY - 5),
-                        10.0f, 4.0f, GRAY);
-        }
+    void Level2::SubmitSprites(RenderQueue& queue, const Resources& resources) const {
+        Level::SubmitSprites(queue, resources);
+        for (const auto& bird : birds) bird.SubmitSprites(queue, resources.Assets(), Camera().zoom);
     }
 
     std::unique_ptr<Level> MakeLevel2() {

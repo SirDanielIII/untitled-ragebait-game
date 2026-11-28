@@ -2,6 +2,7 @@
 
 #include "levels/level.h"
 #include "levels/level_1/fake_timer.h"
+#include "objects/bird.h"
 
 #include <array>
 #include <cstdint>
@@ -49,8 +50,8 @@ namespace rage {
         void OnUpdate(float dt, const InputFrame& input) override;
         void DrawPileup() const;
         void DrawWorld(const Resources& resources) const override;
+        void SubmitSprites(RenderQueue& queue, const Resources& resources) const override;
         void DrawHud(const Resources& resources) const override;
-        float PlayerDuckBlend() const override { return duckBlend; }
         std::vector<Event> CreateEvents();
         void Respawn(const char* notification);
         void ResetTraffic();
@@ -63,6 +64,7 @@ namespace rage {
         float speederDelay = 0.0f;
         std::vector<FlyingPig> pigs;
         std::vector<GasPuff> gasPuffs;
+        std::array<Bird, 3> birds;
         float pigSpawnSeconds = 0;
         float birdCooldown = 0;
         bool crashImpact = false;
@@ -71,7 +73,6 @@ namespace rage {
 
         Vector2 checkpoint = {};
         float collisionCooldown = 0.0f;
-        float duckBlend = 0.0f;
         float pileupSeconds = 0.0f;
         float slideProgress = 0.0f;
         float chickenX = 0.0f;

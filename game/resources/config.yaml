@@ -7,14 +7,35 @@ window:
   unlimited_fps: false
   show_fps: false
 audio:
-  master_volume: 0.5
+  master_volume: 1.0
   muted: false
-  music_volume: 0.8 # Multiplied by master_volume.
-  sfx_volume: 1
+  music_volume: 1.0
+  sfx_volume: 1.0
 player:
-  move_speed: 260
+  move_speed: 220
+  ground_acceleration: 1000
+  counter_strafe_acceleration: 2000 # Braking against the current horizontal velocity.
+  ground_friction: 500 # Coasting deceleration; preserves the slide.
+  start_speed: 90
   jump_speed: 620
-  gravity: 1500
+  gravity: 1750
+  climb_speed: 180
+  climb_contact_distance: 2
+  bounce_climb_lock: 0.2 # Seconds before a bounce can latch onto a wall.
+  standing_width: 30
+  standing_height: 44
+  crouch_height_multiplier: 0.5 # Half-height hitbox; feet stay in place.
+  crouch_speed_multiplier: 0.2
+  crouch_jump_multiplier: 1.5 # Multiplies jump speed, not height.
+  max_stamina: 100
+  climb_stamina_drain: 45 # Stamina/second.
+  jump_stamina_cost: 18 # Paid once on takeoff; no passive airborne drain.
+  crouch_jump_stamina_cost: 50 # Total cost, replacing the regular jump cost.
+  crouch_stamina_drain: 2 # Stacks with climbing drain.
+  stamina_regen: 40 # Grounded and not crouching/climbing, including while walking.
+  low_stamina_threshold: 0.3 # Red bar and movement slowdown below this fraction of max stamina.
+  exhaustion_recovery_threshold: 0.15 # Fraction of max stamina after hitting zero.
+  exhausted_speed_multiplier: 0.5 # Applies to walking AND crouching while low on stamina or exhausted.
 dialogue:
   characters_per_second: 40
 session:

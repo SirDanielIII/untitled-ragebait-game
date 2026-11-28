@@ -7,7 +7,7 @@
 namespace rage {
     inline constexpr int canvasWidth = 1600;
     inline constexpr int canvasHeight = 900;
-    inline constexpr Rectangle worldViewport = {0, 140, 1600, 520};
+    inline constexpr Rectangle worldViewport = {0, 0, 1600, 660};
 
     inline Vector2 WindowPixelScale() {
         // GetScreenWidth/Height are truncated at fractional DPI scales. Their ratio

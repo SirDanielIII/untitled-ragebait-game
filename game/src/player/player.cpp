@@ -8,10 +8,6 @@ namespace rage {
         bool Overlaps(Rectangle a, Rectangle b) {
             return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
         }
-        constexpr float groundAcceleration = 900.0f; // px/s^2 while pressing a direction
-        constexpr float groundFriction = 500.0f;     // px/s^2 while coasting
-        constexpr float startSpeed = 60.0f;
-
         float MoveToward(float current, float target, float maxDelta){
             if (std::abs(target - current) <= maxDelta) return target;
             return current + (target > current ? maxDelta : -maxDelta);
@@ -23,17 +19,34 @@ namespace rage {
         velocity = {};
         grounded = false;
         climbing = false;
+        crouching = false;
+        exhausted = false;
+        bodyHeight = standingSize.y;
         climbLockSeconds = 0.0f;
-        stamina = 100.0f;
+        stamina = staminaCapacity;
         health = maxHealth;
         moveInput = 0.0f;
+        crouchJumpOrigin.reset();
+    }
+
+    void Player::Reset(Vector2 spawn, const GameConfig &config) {
+        standingSize = {config.standingWidth, config.standingHeight};
+        staminaCapacity = config.maxStamina;
+        bounceClimbLock = config.bounceClimbLock;
+        Reset(spawn);
     }
 
     void Player::Bounce(Vector2 launchVelocity) {
         velocity = launchVelocity;
         grounded = false;
         climbing = false;
-        climbLockSeconds = 0.2f;
+        climbLockSeconds = bounceClimbLock;
+    }
+
+    std::optional<Vector2> Player::TakeCrouchJump() {
+        const auto origin = crouchJumpOrigin;
+        crouchJumpOrigin.reset();
+        return origin;
     }
 
     void Player::TakeDamage(int amount) {
@@ -59,6 +72,10 @@ namespace rage {
         if (!std::isfinite(dt) || dt <= 0.0f) return;
         if (IsDead()) return;
         moveInput = std::clamp(input.move, -1.0f, 1.0f);
+        standingSize = {config.standingWidth, config.standingHeight};
+        staminaCapacity = config.maxStamina;
+        bounceClimbLock = config.bounceClimbLock;
+        stamina = std::clamp(stamina, 0.0f, staminaCapacity);
         auto settleOnSupport = [&]() {
             if (velocity.y < 0.0f) return false;
             const Rectangle body = Bounds();
@@ -87,65 +104,79 @@ namespace rage {
             }
             return false;
         };
-        // Exact edge contact must count even when gravity displacement rounds to zero.
-        // Also establishes support before a jump immediately after spawning/resetting.
-        grounded = settleOnSupport();
-        // Climbing: holding W/UP while touching the side of a platform
-        // (within 2 px) latches onto it. Every platform is climbable.
-        // The player is snapped to the platform's side and horizontal
-        // movement is disabled while climbing.
-        const bool wasClimbing = climbing;
-        climbing = false;
-        climbLockSeconds = std::max(0.0f, climbLockSeconds - std::min(dt, 0.1f));
-        if (input.climb && climbLockSeconds == 0.0f && stamina > 0.0f) {
-            const Rectangle body = Bounds();
-            constexpr float contactDistance = 2.0f;
-            for (const Rectangle platform: platforms) {
-                const bool verticalOverlap = body.y < platform.y + platform.height
-                    && body.y + body.height > platform.y;
-                if (!verticalOverlap) continue;
-                const float playerRight = body.x + body.width;
-                const float platformRight = platform.x + platform.width;
-                // Touching the left side of the platform.
-                if (std::abs(playerRight - platform.x) <= contactDistance) {
-                    position.x = platform.x - body.width;
-                    climbing = true;
-                    break;
-                }
-                // Touching the right side of the platform.
-                if (std::abs(body.x - platformRight) <= contactDistance) {
-                    position.x = platformRight;
-                    climbing = true;
-                    break;
-                }
+        const auto resizeForCrouch = [&](bool duck) {
+            const float height = config.standingHeight * (duck ? config.crouchHeightMultiplier : 1.0f);
+            const Rectangle resized = {position.x, position.y + bodyHeight - height, standingSize.x, height};
+            // Keep the feet fixed. A low ceiling keeps the player crouched after release.
+            const bool blocked = height > bodyHeight && (resized.y < world.y ||
+                std::any_of(platforms.begin(), platforms.end(), [&](Rectangle p) { return Overlaps(resized, p); }));
+            if (!blocked) {
+                position.y = resized.y;
+                bodyHeight = height;
+                crouching = duck;
             }
-        }
-        // Stop upward momentum when the player releases the climbing key.
-        if (wasClimbing && !climbing) {
-            velocity.y = 0.0f;
-        }
-        // One horizontal axis: opposite keys cancel; diagonal normalization is unnecessary.
-        const float targetSpeed = climbing ? 0.0f : std::clamp(input.move, -1.0f, 1.0f) * config.moveSpeed;
-        const float rate = input.move != 0.0f ? groundAcceleration : groundFriction;
-        // Space still works for jumping. W/UP can initiate climbing instead.
-        if (input.jump && grounded && !climbing && stamina > 0.0f) {
-            velocity.y = -config.jumpSpeed;
-            grounded = false;
-        }
-        if (climbing) {
-            velocity.x = 0.0f;
-            velocity.y = -config.climbSpeed;
-            grounded = false;
-        }
-        // Small steps keep simple axis-separated AABB collisions reliable at lower frame rates.
+        };
+        // Input, physics and stamina share small steps, including takeoffs after landing.
         float remaining = std::min(dt, 0.1f);
-        if (!climbing && input.move != 0.0f && std::abs(velocity.x) < startSpeed && velocity.x * input.move >= 0.0f) {
-            velocity.x = std::clamp(input.move, -1.0f, 1.0f) * startSpeed;
-        }
         while (remaining > 0.0f) {
             const float step = std::min(remaining, 1.0f / 120.0f);
             remaining -= step;
-            if (!climbing) velocity.x = MoveToward(velocity.x, targetSpeed, rate * step);
+
+            const bool wasCrouching = crouching;
+            // Exact contact also establishes support immediately after spawning/resetting.
+            grounded = settleOnSupport();
+            resizeForCrouch(input.duck && grounded);
+            const bool wasClimbing = climbing;
+            climbing = false;
+            climbLockSeconds = std::max(0.0f, climbLockSeconds - step);
+            if (input.climb && climbLockSeconds == 0.0f && stamina > 0.0f && !exhausted) {
+                const Rectangle body = Bounds();
+                for (const Rectangle platform: platforms) {
+                    if (body.y >= platform.y + platform.height || body.y + body.height <= platform.y) continue;
+                    if (std::abs(body.x + body.width - platform.x) <= config.climbContactDistance) {
+                        position.x = platform.x - body.width;
+                        climbing = true;
+                        break;
+                    }
+                    if (std::abs(body.x - platform.x - platform.width) <= config.climbContactDistance) {
+                        position.x = platform.x + platform.width;
+                        climbing = true;
+                        break;
+                    }
+                }
+            }
+            if (wasClimbing && !climbing) velocity.y = 0.0f;
+
+            const bool crouchJump = crouching || wasCrouching;
+            const float jumpCost = crouchJump ? config.crouchJumpStaminaCost : config.jumpStaminaCost;
+            if (input.jump && grounded && !climbing && stamina >= jumpCost && !exhausted) {
+                velocity.y = -config.jumpSpeed * (crouchJump ? config.crouchJumpMultiplier : 1.0f);
+                stamina = std::max(0.0f, stamina - jumpCost);
+                if (stamina == 0.0f) exhausted = true;
+                grounded = false;
+                if (crouchJump) crouchJumpOrigin = Vector2{position.x + standingSize.x / 2, position.y + bodyHeight};
+                resizeForCrouch(false);
+            }
+            const float speedMultiplier = (crouching ? config.crouchSpeedMultiplier : 1.0f)
+                * (exhausted || LowStamina(config) ? config.exhaustedSpeedMultiplier : 1.0f);
+            const float targetSpeed = moveInput * config.moveSpeed * speedMultiplier;
+            if (climbing) {
+                velocity.x = 0.0f;
+                velocity.y = -config.climbSpeed;
+                grounded = false;
+            } else {
+                // Crouching and low stamina limit existing momentum as well as the target.
+                if (speedMultiplier < 1.0f) {
+                    const float limit = config.moveSpeed * speedMultiplier;
+                    velocity.x = std::clamp(velocity.x, -limit, limit);
+                }
+                const float initialSpeed = std::min(config.startSpeed * speedMultiplier, std::abs(targetSpeed));
+                if (moveInput != 0.0f && std::abs(velocity.x) < initialSpeed && velocity.x * moveInput >= 0.0f)
+                    velocity.x = std::copysign(initialSpeed, moveInput);
+                const float rate = moveInput == 0.0f ? config.groundFriction
+                    : (velocity.x * moveInput < 0.0f ? config.counterStrafeAcceleration : config.groundAcceleration);
+                velocity.x = MoveToward(velocity.x, targetSpeed, rate * step);
+            }
             position.x += velocity.x * step;
             for (const auto platform: platforms) {
                 if (!Overlaps(Bounds(), platform)) continue;
@@ -204,20 +235,22 @@ namespace rage {
                 grounded = true;
             }
             if (!grounded) grounded = settleOnSupport();
-        }
-        // Stamina: standing on the ground regenerates it, climbing
-        // drains it, and being airborne drains it at the jump rate.
-        if (grounded) {
-            stamina += config.staminaRegen * dt;
-        } else if (climbing) {
-            stamina -= config.climbStaminaDrain * dt;
-        } else {
-            stamina -= config.jumpStaminaDrain * dt;
-        }
-        stamina = std::clamp(stamina, 0.0f, config.maxStamina);
-        if (stamina <= 0.0f && climbing) {
-            climbing = false;
-            velocity.y = 0.0f;
+            // Walking off an edge or climbing also ends crouch. Preserve a compact
+            // collider only while a low ceiling physically prevents standing up.
+            if (!grounded) resizeForCrouch(false);
+
+            const float drain = (crouching ? config.crouchStaminaDrain : 0.0f)
+                + (climbing ? config.climbStaminaDrain : 0.0f);
+            if (drain > 0.0f) stamina -= drain * step;
+            // Walking and coasting recover stamina, including while exhaustion slows movement.
+            else if (grounded && !crouching && !climbing) stamina += config.staminaRegen * step;
+            stamina = std::clamp(stamina, 0.0f, staminaCapacity);
+            if (stamina == 0.0f) exhausted = true;
+            else if (stamina >= staminaCapacity * config.exhaustionRecoveryThreshold) exhausted = false;
+            if (exhausted && climbing) {
+                climbing = false;
+                velocity.y = 0.0f;
+            }
         }
     }
     void Player::ApplyKnockback(Vector2 force) {

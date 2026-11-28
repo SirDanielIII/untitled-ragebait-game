@@ -14,6 +14,7 @@ The current game supports menus, settings, level selection, movement/collision, 
 | Edit a level's scripted events | `game/src/levels/level_<number>/level_<number>_events.cpp` |
 | Change shared level behavior or camera follow | `game/src/levels/level.cpp` |
 | Change movement or collisions | `game/src/player/player.cpp` |
+| Change crouch-jump air particles | `game/src/player/jump_particles.cpp` |
 | Change menu layouts, labels or buttons | `game/src/ui/menus/menus.cpp` |
 | Change button/slider interactions | `game/src/ui/menu/menu.cpp`, `game/src/ui/slider/slider.cpp` |
 | Change dialogue reveal or panel drawing | `game/src/ui/dialogue/dialogue.cpp` |
@@ -127,6 +128,12 @@ Mouse movement or clicks can change focus. A stationary pointer does not overrid
 
 The player uses seconds, small collision substeps and axis-separated rectangle collisions. Ground support is checked before jump input, including immediately after spawn/reset. World bounds and authored platform rectangles define collision geometry.
 
+Tune movement in the `player` section of `game/resources/config.yaml`, then rebuild/restart (or supply a tuning file with `--config`). It includes acceleration, counter-strafe acceleration, starting speed, coasting friction, speed, jump impulse, gravity, climbing, body dimensions, crouch multipliers and all stamina values. `GameConfig` supplies matching defaults when a key is missing.
+
+Hold Space (or W/Up) to jump whenever grounded and enough stamina is available. Climbing is exclusive to Level 2, where W/Up prioritizes climbing beside a wall; the other levels retain W/Up as jump controls. S/Down crouches on the ground to half standing height with feet fixed and moves at 20% speed. Airborne duck input is ignored; jumping or leaving a ledge restores standing height as soon as there is headroom. Low ceilings still prevent expanding the collider through geometry. A jump from crouch, including releasing crouch and jumping together, multiplies takeoff speed by 1.2 and pays the larger crouch jump cost. Successful crouch jumps emit a brief burst of square air particles at the takeoff point, managed by `player/jump_particles.*` and the shared level lifecycle. Add `crouch` and optionally `crouch_walk` player animation states for dedicated art; until then the standing artwork is compressed to the crouch height.
+
+Stamina costs 18 per ordinary jump or 30 per crouch jump. Climbing drains 45/second and crouching drains 2/second; these costs stack. Walking and coasting have no stamina cost, and there is no passive airborne drain. Standing or walking on the ground restores 40/second when not crouching or climbing, including during exhaustion. Below `low_stamina_threshold` (30% by default), the bar turns red and both walking and crouch movement use `exhausted_speed_multiplier` (50%): default speeds drop from 220 to 110 and from 44 to 22 respectively. Hitting zero also latches exhaustion and prevents jumping/climbing until the 15% recovery threshold is reached; movement stays slow until stamina leaves the red range. Walking can continue throughout recovery. All thresholds, rates and multipliers are configurable. Respawn restores the configured maximum stamina and clears crouch/exhaustion.
+
 `ui/dialogue/dialogue.h` declares both the reveal state and dialogue panel. `Typewriter` stores the full message and fractional reveal progress. `DialogueBox` wraps the full text, reserves word positions while revealing, clips overflowing lines and follows the latest revealed line. UTF-8 codepoints reveal together; the loaded font supplies glyph coverage.
 
 Each `DialogueCue` specifies text, speaker, speed multiplier, delay, size and skip/replay controls. `Say` replaces the current cue. The Instant setting skips both reveal time and delay.
@@ -134,6 +141,8 @@ Each `DialogueCue` specifies text, speaker, speed multiplier, delay, size and sk
 ## Preferences
 
 Load order is `GameConfig` defaults, packaged `config.yaml` (or `--config`), then user settings (or `--settings`). The reader accepts section maps with two-space-indented numeric/bool scalars, comments and a UTF-8 BOM. Invalid keys or values are reported and leave the previous value intact.
+
+User preference loading/saving excludes the `player` section, including gameplay values in older `settings.yaml` files. Gameplay tuning therefore comes from the packaged config or `--config`, without stale preferences overriding it. `ConfigStore::Load`/`Save` can still read/write complete tuning files when `preferencesOnly` is false (the default).
 
 `--self-test` returns before configuration or window creation. `--smoke-test` loads the packaged config (or `--config`) but skips loading and saving user settings, including a supplied `--settings` file.
 
@@ -156,7 +165,7 @@ Run with the same MinGW runtime used to compile the executable. CLion supplies t
 
 These paths assume a single-configuration Windows build. Use `build/vscode` for a VS Code build. Multi-configuration generators add a configuration folder such as `Debug` below `untitled-ragebait-game`; pass `--config Debug` to the build and `-C Debug` to CTest, and adjust the executable path. `BUILD_TESTING=OFF` disables CTest registration; test sources and the executable's test options are still included.
 
-Self-tests cover dialogue, config, movement, sliders, navigation, pause/reset and stage hooks. The smoke test uses a hidden Raylib window, synthetic input and real rendering. It checks font fallback, texture replacement, all screens and stage lifecycles.
+Self-tests cover dialogue, config, movement, sliders, navigation, pause/reset, stage hooks and shared bird flight, swoops and hit cooldowns. Independent test groups continue after a failure and the process returns a failure status if any group fails. The smoke test uses a hidden Raylib window, synthetic input and real rendering. It checks font fallback, texture replacement, bird animation and facing, all screens and stage lifecycles.
 
 Rendering tests run at 960x540, 1280x720, 1366x768, 1600x900 and 1920x1080. They check the fixed canvas, scaled screen colors, clipping, input mapping and the maximize/fullscreen transitions. On Windows they also exercise the native resize handler for all eight edges and corners. Captures include menus and level dialogue at each size. Tests do not write user preferences.
 

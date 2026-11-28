@@ -111,8 +111,7 @@ namespace rage {
         Apply(*action);
         // Continuous slider changes are silent; ordinary button actions play one click.
         return action->kind != ActionKind::SetVolume && action->kind != ActionKind::SetMusicVolume
-               && action->kind != ActionKind::SetSfxVolume && action->kind != ActionKind::SetDialogueSpeed
-               && action->kind != ActionKind::SetTargetFps;
+               && action->kind != ActionKind::SetSfxVolume && action->kind != ActionKind::SetTargetFps;
     }
 
     void Game::Apply(Action action) {
@@ -159,10 +158,6 @@ namespace rage {
                 return;
             case ActionKind::SetSfxVolume:
                 config.sfxVolume = std::clamp(action.scalar, 0.0f, 1.0f);
-                settingsDirty = true;
-                return;
-            case ActionKind::SetDialogueSpeed:
-                config.charactersPerSecond = std::clamp(action.scalar, 0.0f, 240.0f);
                 settingsDirty = true;
                 return;
         }
@@ -260,7 +255,7 @@ int main(int argc, char **argv) {
         if (settingsPath.empty()) settingsPath = rage::ConfigStore::DefaultSettingsPath();
         rage::ConfigStore config;
         config.Load(configPath);
-        if (!smoke) config.Load(settingsPath, true);
+        if (!smoke) config.Load(settingsPath, true, true);
 #if defined(PLATFORM_WEB)
         // Desktop remains the verified build; browser persistence needs an IDBFS mount.
         if (smoke) {

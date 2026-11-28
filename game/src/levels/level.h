@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include "player/player.h"
+#include "player/jump_particles.h"
 #include "ui/dialogue/dialogue.h"
 #include "engine/resources/resources.h"
 #include <memory>
@@ -78,9 +79,9 @@ namespace rage {
         void Update(float dt, const InputFrame &input, const GameConfig &config);
 
         void Draw(const Resources &resources, const GameConfig &config) const;
-        void DrawStaminaBar(const Resources &resources, const GameConfig &config) const;
 
         const LevelDefinition &Definition() const { return definition; }
+        bool CanClimb() const { return definition.id == LevelId::Level2; }
         const Player &GetPlayer() const { return player; }
         const Typewriter &Dialogue() const { return dialogue.writer; }
         DialogueMessageId CurrentDialogueId() const { return currentCue.id; }
@@ -139,9 +140,6 @@ namespace rage {
         virtual void DrawHud(const Resources &) const {
         }
 
-        // Optional level-specific duck pose: 0 = standing, 1 = fully crouched.
-        virtual float PlayerDuckBlend() const { return 0.0f; }
-
         // Queue this level's Game Data sprites (hazards, props, effects). Each is drawn on its
         // configured layer; Middle-layer sprites appear behind the player.
         // The base implementation queues the level's game objects;
@@ -171,6 +169,7 @@ namespace rage {
 
         const LevelDefinition &definition;
         Player player;
+        JumpParticles jumpParticles;
         DialogueBox dialogue;
         Camera2D camera = {};
         DialogueCue currentCue;

@@ -9,9 +9,9 @@
 
 namespace rage {
     namespace {
-        // All coordinates use world pixels. The player's collider is 30x44.
-        // Default movement (260 px/s) and jump (620 px/s, gravity 1500) allow
-        // about 128 px of jump height. Ledges in the climb are 78-102 px apart.
+        // All coordinates use world pixels. Default standing/crouching colliders are 30x44/30x22.
+        // Default jumps reach about 96 px, or 138 px from crouch for taller ledges.
+        // Movement tuning lives in config.yaml; wall climbing is exclusive to Level 2.
         constexpr float floorY = 1480.0f;
         constexpr float collisionGraceSeconds = 0.35f;
         constexpr float roadStart = 580.0f;
@@ -33,38 +33,6 @@ namespace rage {
         constexpr char anvilId[] = "doorway-anvil";
         constexpr float anvilPoofDuration = 0.45f;
         constexpr char exitId[] = "exit-level1";
-        struct PoleBird {
-            Vector2 perch;
-            float rhythm;
-            float phase;
-            Color plumage;
-        };
-        constexpr std::array<PoleBird, 3> birds{{
-            {{3240, 1120}, 2.2f, 0.4f, {104, 224, 211, 255}},
-            {{3415, 1010}, 1.8f, 2.1f, {249, 150, 115, 255}},
-            {{3610, 882}, 2.5f, 4.6f, {204, 154, 246, 255}}
-        }};
-        Rectangle BirdBounds(const PoleBird& bird, float time) {
-            const float phase = time * bird.rhythm + bird.phase;
-            return {bird.perch.x + 84 * std::sin(phase),
-                    bird.perch.y - 50 * std::abs(std::sin(phase * 2)), 38, 27};
-        }
-        void DrawPoleBird(const PoleBird& bird, float time) {
-            const Rectangle b = BirdBounds(bird, time);
-            const float facing = std::cos(time * bird.rhythm + bird.phase) >= 0 ? 1.0f : -1.0f;
-            rlPushMatrix();
-            rlTranslatef(b.x + 19, b.y + 14, 0);
-            DrawEllipse(0, 0, 19, 13, bird.plumage);
-            DrawEllipse(static_cast<int>(-6 * facing), static_cast<int>(4 * std::sin(time * 22)), 10, 5, DARKPURPLE);
-            DrawCircleV({9 * facing, -7}, 8, RAYWHITE);
-            DrawCircleV({12 * facing, -8}, 3, BLACK);
-            DrawLineEx({16 * facing, -1}, {25 * facing, 1}, 5, GOLD);
-            DrawLineEx({0, -10}, {-1, -20}, 2, DARKBLUE);
-            const float rotor = 12 * std::cos(time * 30);
-            DrawLineEx({-1 - rotor, -21}, {-1 + rotor, -19}, 4, RED);
-            rlPopMatrix();
-        }
-
         void DrawAnvil(Rectangle b) {
             const Color steel{62, 73, 92, 255};
             DrawTriangle({b.x, b.y + 2}, {b.x + 37, b.y + 22}, {b.x + 37, b.y + 2}, steel);
@@ -87,7 +55,6 @@ namespace rage {
                 DrawCircleV({puff.x - 2, puff.y - 4}, radius * 0.72f, Fade(RAYWHITE, 1 - t));
             }
         }
-        constexpr float duckHeight = 18.0f;
         constexpr float pigScale = 1.35f;
         // World-space flight heights for the upper, middle, and lower cloud routes.
         constexpr std::array<float, 3> pigRouteY{475, 620, 750};
@@ -110,7 +77,6 @@ namespace rage {
                         radius * 0.72f, Fade({163, 221, 64, 255}, 0.87f * opacity));
         }
 
-        constexpr float duckTransition = 0.09f;
         constexpr std::array<Rectangle, 3> refuges{{
             {3975, 705, 96, 16},
             {4260, 690, 96, 16},
@@ -646,7 +612,11 @@ namespace rage {
         return definition;
     }
 
-    Level1::Level1() : Level(Level1Definition()) {
+    Level1::Level1() : Level(Level1Definition()), birds{
+        Bird(PoleFlight{{3240, 1120}, 2.2f, 0.4f}),
+        Bird(PoleFlight{{3415, 1010}, 1.8f, 2.1f}),
+        Bird(PoleFlight{{3610, 882}, 2.5f, 4.6f})
+    } {
         for (auto& event : CreateEvents()) Events().RegisterEvent(std::move(event));
     }
 
@@ -669,6 +639,7 @@ namespace rage {
     void Level1::OnReset() {
         timer.Reset();
         ResetTraffic();
+        for (auto& bird : birds) bird.Reset();
         birdCooldown = 0;
         ResetStars();
         pigs.clear();
@@ -676,7 +647,6 @@ namespace rage {
         pigSpawnSeconds = 1.0f;
         checkpoint = Definition().spawn;
         collisionCooldown = 0.0f;
-        duckBlend = 0.0f;
         slideProgress = 0.0f;
         collisionCount = 0;
         roadCheckpointReached = false;
@@ -690,7 +660,6 @@ namespace rage {
         if (pileupStarted && !crashImpact) ResetTraffic();
         MutablePlayer().Reset(checkpoint);
         collisionCooldown = collisionGraceSeconds;
-        duckBlend = 0.0f;
         ResetStars();
         pigs.clear();
         gasPuffs.clear();
@@ -698,7 +667,7 @@ namespace rage {
         RequestSound(playerSounds::death);
         ++collisionCount;
         Events().Notify({notification, static_cast<std::uint64_t>(collisionCount)});
-        timer.Reset();
+        timer.Reset(60.0f, false); // Reset the countdown without repeating the entrance on each death.
     }
 
     void Level1::ResetStars() {
@@ -789,14 +758,9 @@ namespace rage {
 
     void Level1::OnUpdate(float dt, const InputFrame& input) {
         timer.Update(dt);
+        for (auto& bird : birds) bird.Update(dt, ElapsedSeconds(), GetPlayer().Bounds());
         dt = std::min(dt, 0.1f); // Match the physics engine maximum step.
         UpdatePigs(dt);
-        if (GetPlayer().Grounded() || sliding) {
-            const float direction = input.duck ? 1.0f : -1.0f;
-            duckBlend = std::clamp(duckBlend + direction * dt / duckTransition, 0.0f, 1.0f);
-        } else {
-            duckBlend = 0.0f;
-        }
         // Slide motion stays inside the level rather than changing shared movement code.
         if (sliding) {
             slideProgress = std::min(1.0f, slideProgress + dt / slideDuration);
@@ -912,12 +876,9 @@ namespace rage {
 
     void Level1::CheckHazards(float dt) {
         Rectangle player = GetPlayer().Bounds();
-        const float reduction = (player.height - duckHeight) * duckBlend;
-        player.y += reduction;
-        player.height -= reduction;
         birdCooldown = std::max(0.0f, birdCooldown - dt);
         for (const auto& bird : birds) {
-            const Rectangle b = BirdBounds(bird, ElapsedSeconds());
+            const Rectangle b = bird.Bounds();
             if (birdCooldown == 0 && Intersects(player, b)) {
                 const bool left = player.x + player.width / 2 < b.x + b.width / 2;
                 MutablePlayer().Bounce({left ? -390.0f : 390.0f, -315.0f});
@@ -1012,6 +973,11 @@ namespace rage {
         DrawCrashBlast(impact, pileupSeconds);
     }
 
+    void Level1::SubmitSprites(RenderQueue& queue, const Resources& resources) const {
+        Level::SubmitSprites(queue, resources);
+        for (const auto& bird : birds) bird.SubmitSprites(queue, resources.Assets(), Camera().zoom);
+    }
+
     void Level1::DrawWorld(const Resources&) const {
         // An ordinary sidewalk abruptly meets an oncoming carriageway.
         DrawRectangleRec({0, floorY, 580, 120}, {108, 119, 133, 255});
@@ -1100,8 +1066,6 @@ namespace rage {
             DrawUtilityPole({object.position.x, object.position.y, object.size.x, object.size.y});
         }
 
-        for (const auto& bird : birds) DrawPoleBird(bird, ElapsedSeconds());
-
         // Draw the grounded masts first, then the insulators and live cables.
         DrawWireSupports();
 
@@ -1145,7 +1109,7 @@ namespace rage {
             if (distance > 0 && distance < 220 && std::abs(pig.y - player.y) < 55)
                 pigApproaching = true;
         }
-        if (duckBlend == 0.0f && pigApproaching) {
+        if (!GetPlayer().Crouching() && pigApproaching) {
             const auto p = GetPlayer().Position();
             DrawText("HOLD S!", static_cast<int>(p.x - 12), static_cast<int>(p.y - 50), 14, GOLD);
         }
@@ -1207,8 +1171,8 @@ namespace rage {
         if (campusReached) DrawText("YOU MADE IT!", 6915, 1420, 15, {160, 237, 179, 255});
     }
 
-    void Level1::DrawHud(const Resources&) const {
-        timer.Draw(1420, 26, 44);
+    void Level1::DrawHud(const Resources& resources) const {
+        timer.Draw(resources);
     }
     std::unique_ptr<Level> MakeLevel1() { return std::make_unique<Level1>(); }
 }
