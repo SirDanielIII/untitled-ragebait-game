@@ -79,7 +79,6 @@ namespace rage {
         void Update(float dt, const InputFrame &input, const GameConfig &config);
 
         void Draw(const Resources &resources, const GameConfig &config) const;
-        void DrawStaminaBar(const Resources &resources, const GameConfig &config) const;
 
         const LevelDefinition &Definition() const { return definition; }
         bool CanClimb() const { return definition.id == LevelId::Level2; }

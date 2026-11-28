@@ -477,6 +477,13 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
             capture("stage_1_crouch_jump");
             Frame(0.06f, {.duck = true});
             capture("stage_1_air_particles");
+            // Capture the timer's entrance, travel and settled HUD in real gameplay.
+            for (int frame = 0; frame < 60; ++frame) Frame(1.0f / 60, {});
+            capture("stage_1_timer_entrance");
+            for (int frame = 0; frame < 26; ++frame) Frame(1.0f / 60, {});
+            capture("stage_1_timer_travel");
+            for (int frame = 0; frame < 30; ++frame) Frame(1.0f / 60, {});
+            capture("stage_1_timer_docked");
         }
         Frame(0, {.pause = true});
         capture("pause");

@@ -667,7 +667,7 @@ namespace rage {
         RequestSound(playerSounds::death);
         ++collisionCount;
         Events().Notify({notification, static_cast<std::uint64_t>(collisionCount)});
-        timer.Reset();
+        timer.Reset(60.0f, false); // Reset the countdown without repeating the entrance on each death.
     }
 
     void Level1::ResetStars() {
@@ -1171,8 +1171,8 @@ namespace rage {
         if (campusReached) DrawText("YOU MADE IT!", 6915, 1420, 15, {160, 237, 179, 255});
     }
 
-    void Level1::DrawHud(const Resources&) const {
-        timer.Draw(1420, 26, 44);
+    void Level1::DrawHud(const Resources& resources) const {
+        timer.Draw(resources);
     }
     std::unique_ptr<Level> MakeLevel1() { return std::make_unique<Level1>(); }
 }

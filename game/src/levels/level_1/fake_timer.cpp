@@ -1,33 +1,40 @@
 #include "levels/level_1/fake_timer.h"
-#include "levels/level_1/level_1.h"
-#include <array>
-#include <cstdint>
 #include "engine/graphics/layout.h"
+#include "engine/resources/resources.h"
+#include "ui/hud/gameplay_hud.h"
+#include "ui/theme.h"
 #include <algorithm>
 #include <cmath>
 
 
 namespace rage {
+    namespace {
+        constexpr float entranceHold = 1.2f;
+        constexpr float entranceTravel = 0.65f;
+        constexpr float entranceDuration = entranceHold + entranceTravel;
+        constexpr float driftSpeed = 5.0f;
+    }
+
     float FakeTimer::RandFloat(float lo, float hi) {
         return lo + (hi - lo) * (static_cast<float>(GetRandomValue(0, 10000))/10000.0f);
     }
 
-    const char* FakeTimer::formatTime(float seconds) {
+    const char* FakeTimer::FormatTime(float seconds) {
         const bool negative = seconds < 0.0f;
-        const int total= static_cast<int>(std::fabs(seconds));
-        return TextFormat("%s%02d:%02d", negative ? "-" : "", total / 60, total%60);
+        const int total = static_cast<int>(std::fabs(seconds));
+        return TextFormat("%s%02d:%02d", negative ? "-" : "", total / 60, total % 60);
     }
 
 
-    void FakeTimer::Reset(float startSeconds) {
+    void FakeTimer::Reset(float startSeconds, bool showEntrance) {
         displayTime = startSeconds;
         fakeValue = startSeconds;
         fakeTimer = 0.0f;
         glitch = Glitch::None;
         glitchTime = 0.0f;
         nextGlitch = RandFloat(3.0f, 6.0f);
-        wobbleClock = 0.0f;
-        flashClock = 0.0f;
+        elapsedSeconds = 0.0f;
+        entranceSeconds = showEntrance ? 0.0f : entranceDuration;
         driftDistance = 0.0f;
 
 
@@ -38,34 +45,22 @@ namespace rage {
     }
 
     void FakeTimer::StartRandomGlitch() {
-        switch(GetRandomValue(0,4)) {
+        switch (GetRandomValue(0, 4)) {
             case 0:
-                glitch = Glitch::SpeedUp;
-                glitchTime = RandFloat(2.0f, 4.0f);
-                break;
             case 1:
                 glitch = Glitch::SpeedUp;
-                glitchTime = RandFloat(2.0f, 4.0f);
                 break;
             case 2:
                 glitch = Glitch::SlowDown;
-                glitchTime = RandFloat(2.0f, 4.0f);
                 break;
             case 3:
                 glitch = Glitch::Freeze;
-                glitchTime = RandFloat(2.0f, 4.0f);
                 break;
             case 4:
                 glitch = Glitch::WrongTime;
-                glitchTime = RandFloat(2.0f, 4.0f);
-                break;
-            
-            default:
-                // just jump forwards or backwards, does not go back to previous time
-                displayTime += RandFloat(-10.0f, 10.0f);
-                nextGlitch = RandFloat(2.0f, 6.0f);
                 break;
         }
+        glitchTime = RandFloat(2.0f, 4.0f);
     }
     void FakeTimer::ForceGlitch() {
         glitch = Glitch::None;
@@ -73,11 +68,12 @@ namespace rage {
     }
 
     void FakeTimer::Update(float dt, bool paused) {
-        if (paused) 
+        if (paused || !std::isfinite(dt) || dt < 0)
             return;
 
-        wobbleClock += dt;
-        flashClock += dt;
+        elapsedSeconds += dt;
+        const float previousEntrance = entranceSeconds;
+        entranceSeconds = std::min(entranceDuration, entranceSeconds + dt);
 
 
         if (glitch != Glitch::None) {
@@ -113,34 +109,49 @@ namespace rage {
             }
         }
 
-        driftDistance += dt * driftSpeed;
+        // Only start drifting once it has reached its corner.
+        driftDistance += std::max(0.0f, dt - (entranceSeconds - previousEntrance)) * driftSpeed;
     }
 
-        void FakeTimer::Draw(int x, int y, int fontSize) const {
+    void FakeTimer::Draw(const Resources &resources) const {
         const float shown = (glitch == Glitch::WrongTime) ? fakeValue : displayTime;
-        const char* text = formatTime(shown);
-        const int textW = MeasureText(text, fontSize);
+        const char* text = FormatTime(shown);
+        const float travel = std::clamp((entranceSeconds - entranceHold) / entranceTravel, 0.0f, 1.0f);
+        const float eased = travel * travel * (3 - 2 * travel);
+        const bool docked = entranceSeconds >= entranceDuration;
+        // Two short flashes on the timer itself, with no full-screen strobe.
+        const bool entranceFlash = entranceSeconds < 0.14f
+            || (entranceSeconds >= 0.5f && entranceSeconds < 0.64f);
+        const bool urgentFlash = shown < 10.0f && std::fmod(elapsedSeconds, 0.5f) < 0.25f;
+        const Color accent = entranceFlash ? theme::paper : urgentFlash ? theme::danger : theme::gold;
+        const Color fill = entranceFlash ? theme::danger : theme::panel;
 
-        // (x, y) is the top-centre anchor of the text.
-        float posX = static_cast<float>(x) - static_cast<float>(textW) / 2.0f;
-        float posY = static_cast<float>(y);
+        // Quantize the moving overlay to a two-pixel grid.
+        const auto snap = [](float value) { return std::round(value / 2) * 2; };
+        Rectangle panel{0, 0, snap(std::lerp(440.0f, 248.0f, eased)), snap(std::lerp(168.0f, 100.0f, eased))};
+        panel.x = snap(std::lerp(canvasWidth / 2.0f, canvasWidth - 160.0f, eased) - panel.width / 2);
+        panel.y = snap(std::lerp(canvasHeight / 2.0f, 98.0f, eased) - panel.height / 2);
+        if (docked) {
+            // Keep the original drift and wobble, bounded near the top-right anchor.
+            const float wobble = 6.0f * std::min(driftDistance / 6, 1.0f);
+            panel.x += snap(std::clamp(driftDirX * driftDistance, -24.0f, 12.0f)
+                + std::sin(elapsedSeconds * 1.3f) * wobble);
+            panel.y += snap(std::clamp(driftDirY * driftDistance, 0.0f, 24.0f)
+                + std::cos(elapsedSeconds * 0.9f) * wobble);
+        }
+        DrawHudPanel(panel, accent, fill);
+        const char *label = entranceSeconds < entranceHold ? "LATE FOR CLASS!" : "TIME LEFT";
+        const float labelSize = 20;
+        const auto labelWidth = resources.MeasureText(label, labelSize).x;
+        resources.DrawText(label, {snap(panel.x + (panel.width - labelWidth) / 2), panel.y + 14}, labelSize, 1, accent);
 
-        // Drift + a little wobble.
-        posX += driftDirX * driftDistance + std::sin(wobbleClock * 1.3f) * 6.0f;
-        posY += driftDirY * driftDistance + std::cos(wobbleClock * 0.9f) * 6.0f;
-
-        // Keep it on screen.
-        const float margin = 10.0f;
-        const float maxX = std::max(margin, static_cast<float>(canvasWidth - textW) - margin);
-        const float maxY = std::max(margin, static_cast<float>(canvasHeight - fontSize) - margin);
-        posX = std::clamp(posX, margin, maxX);
-        posY = std::clamp(posY, margin, maxY);
-
-        // Flash red under 10 seconds.
-        Color color = WHITE;
-        if (shown < 10.0f && std::fmod(flashClock, 0.5f) < 0.25f)
-            color = RED;
-
-        DrawText(text, static_cast<int>(posX), static_cast<int>(posY), fontSize, color);
+        float fontSize = std::round(std::lerp(80.0f, 40.0f, eased) / 4) * 4;
+        // Negative minutes and long runs still fit inside the corner panel.
+        while (fontSize > 12 && resources.MeasureText(text, fontSize).x > panel.width - 24) fontSize -= 4;
+        const auto textSize = resources.MeasureText(text, fontSize);
+        const Vector2 position{snap(panel.x + (panel.width - textSize.x) / 2),
+                               snap(panel.y + 40 + (panel.height - 48 - fontSize) / 2)};
+        resources.DrawText(text, {position.x + 4, position.y + 4}, fontSize, 1, theme::background);
+        resources.DrawText(text, position, fontSize, 1, urgentFlash && !entranceFlash ? theme::danger : theme::paper);
     }
 }
