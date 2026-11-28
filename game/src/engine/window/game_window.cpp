@@ -38,16 +38,43 @@ namespace rage {
                            std::filesystem::path settings, bool test)
         : config(std::move(configuration)), settingsPath(std::move(settings)), smokeTest(test),
           context(config.values, test), resources(directory), game(config.values) {
-        if (!config.diagnostics.empty()) settingsStatus = "Some configuration values were ignored; see the console.";
         for (const auto &diagnostic: config.diagnostics) TraceLog(LOG_WARNING, "%s", diagnostic.c_str());
+        // Smoke tests begin windowed; the desktop preference is restored on normal startup.
+#if !defined(PLATFORM_WEB)
+        if (smokeTest) game.SetFullscreenPreference(false);
+        else ApplyFullscreenPreference();
+#endif
+    }
+
+    void GameWindow::ApplyFullscreenPreference() {
+#if !defined(PLATFORM_WEB)
+        if (config.values.fullscreen == IsWindowFullscreen()) return;
+        const bool entering = config.values.fullscreen;
+        if (entering) {
+            restoreMaximized = IsWindowMaximized();
+            // Let raylib remember the restored window rectangle, not the maximized one.
+            if (restoreMaximized) {
+                RestoreWindow();
+                PollInputEvents();
+            }
+        }
+        ToggleFullscreen(); // Raylib selects the current monitor's native video mode.
+        if (!IsWindowFullscreen() && restoreMaximized) {
+            MaximizeWindow();
+            restoreMaximized = false;
+        }
+        if (config.values.fullscreen != IsWindowFullscreen()) {
+            TraceLog(LOG_WARNING, "WINDOW: Fullscreen transition failed");
+            game.SetFullscreenPreference(IsWindowFullscreen());
+        }
+#endif
     }
 
     Rectangle GameWindow::Destination() const {
-        Rectangle bounds{0, 0, static_cast<float>(GetRenderWidth()), static_cast<float>(GetRenderHeight())};
-#if defined(RAGE_DESKTOP_GLFW)
-        if (IsWindowMaximized() || IsWindowFullscreen() || IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE))
-#endif
-            bounds = CanvasDestination(bounds.width, bounds.height);
+        // Always fit the logical 16:9 layout, including non-16:9 window sizes,
+        // programmatic resizes and fractional DPI. Never stretch one axis.
+        const Rectangle bounds = CanvasDestination(static_cast<float>(GetRenderWidth()),
+                                                   static_cast<float>(GetRenderHeight()));
         const auto dpi = WindowPixelScale();
         return {bounds.x / dpi.x, bounds.y / dpi.y, bounds.width / dpi.x, bounds.height / dpi.y};
     }
@@ -59,7 +86,9 @@ namespace rage {
     void GameWindow::Frame(float dt, const InputFrame &input) {
         const float delta = std::isfinite(dt) ? std::clamp(dt, 0.0f, 0.1f) : 0.0f;
         const int previousFps = config.values.EffectiveTargetFps();
+        const bool previousFullscreen = config.values.fullscreen;
         const bool menuAction = game.Update(delta, input);
+        if (previousFullscreen != config.values.fullscreen) ApplyFullscreenPreference();
         if (!smokeTest && previousFps != config.values.EffectiveTargetFps()) SetTargetFPS(config.values.EffectiveTargetFps());
         if (IsAudioDeviceReady()) SetMasterVolume(config.values.muted ? 0.0f : config.values.masterVolume);
         // Audio: volumes, pause ducking, the screen's music, then the sounds requested this frame.
@@ -72,7 +101,6 @@ namespace rage {
         audio.Update(delta);
         if (game.TakeSettingsDirty() && !smokeTest) {
             preferencesPending = true;
-            settingsStatus = "Changes apply now; drag changes save on release.";
         }
         if (preferencesPending && (!input.mouseDown || game.WantsQuit())) SavePreferences();
         Draw();
@@ -82,57 +110,20 @@ namespace rage {
         const bool settingsSaved = config.SaveFile(settingsPath, ConfigFile::Settings);
         const bool gameSaved = config.SaveFile(settingsPath.parent_path() / "game.yaml", ConfigFile::SaveData);
         const bool saved = settingsSaved && gameSaved;
-        settingsStatus = saved ? "Preferences saved." : "Saving failed; changes still apply this session.";
         if (!saved) TraceLog(LOG_WARNING, "%s", config.diagnostics.back().c_str());
         preferencesPending = false;
     }
 
     void GameWindow::Draw() {
-        BeginTextureMode(resources.Canvas());
-        ClearBackground(Color{19, 25, 39, 255});
-        game.Draw(resources, settingsStatus);
-        if (config.values.showFps) resources.DrawText(TextFormat("%d FPS", GetFPS()), {1410, 18}, 20, 1, RAYWHITE);
-        EndTextureMode();
-
-        // Copy the canvas to the window so pixel art stays crisp at any window size
-        // (see ChoosePresentation in engine/graphics/layout.h).
-        const auto canvas = resources.Canvas();
         const Rectangle destination = Destination();
-        const Presentation presentation = ChoosePresentation(destination.width * WindowPixelScale().x / canvasWidth);
-        // Render textures are stored upside down; a negative source height flips them back.
-        const Rectangle canvasSource{0, 0, static_cast<float>(canvas.texture.width), -static_cast<float>(canvas.texture.height)};
-        RenderTexture2D upscaled = {};
-        if (presentation.mode == PresentMode::SharpUpscale) upscaled = resources.UpscaleTarget(presentation.factor);
-        if (upscaled.id != 0) {
-            // Step 1: enlarge to a whole multiple with nearest-neighbour (every pixel stays square).
-            SetTextureFilter(canvas.texture, TEXTURE_FILTER_POINT);
-            BeginTextureMode(upscaled);
-            ClearBackground(BLANK);
-            BeginBlendMode(BLEND_ALPHA_PREMULTIPLY);
-            DrawTexturePro(canvas.texture, canvasSource,
-                           {0, 0, static_cast<float>(upscaled.texture.width), static_cast<float>(upscaled.texture.height)},
-                           {0, 0}, 0, WHITE);
-            EndBlendMode();
-            EndTextureMode();
-        } else {
-            SetTextureFilter(canvas.texture,
-                             presentation.mode == PresentMode::Exact ? TEXTURE_FILTER_POINT : TEXTURE_FILTER_BILINEAR);
-        }
+        const auto dpi = WindowPixelScale();
+        const Rectangle physical{destination.x * dpi.x, destination.y * dpi.y,
+                                 destination.width * dpi.x, destination.height * dpi.y};
+        if (physical.width <= 0 || physical.height <= 0) return;
 
         BeginDrawing();
         ClearBackground(BLACK);
-        // RGB has already been composited into the canvas. Preserve those colors;
-        // applying glyph-edge alpha a second time would darken the text.
-        BeginBlendMode(BLEND_ALPHA_PREMULTIPLY);
-        if (upscaled.id != 0) {
-            // Step 2: shrink the enlarged copy to the window with smooth (bilinear) filtering.
-            DrawTexturePro(upscaled.texture,
-                           {0, 0, static_cast<float>(upscaled.texture.width), -static_cast<float>(upscaled.texture.height)},
-                           destination, {0, 0}, 0, WHITE);
-        } else {
-            DrawTexturePro(canvas.texture, canvasSource, destination, {0, 0}, 0, WHITE);
-        }
-        EndBlendMode();
+        game.DrawFrame(resources, physical);
         EndDrawing();
     }
 }

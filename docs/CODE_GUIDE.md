@@ -85,7 +85,7 @@ CMake stages `game/resources/` on every build of the game target, including asse
 4. `Game::Update()` in `main.cpp` updates the active level or reads a menu action. `Game::Apply()` handles transitions.
 5. `Game::Draw()` in `main.cpp` draws the active level or selected menu. `ui/menus/menus.cpp` defines how menus look.
 
-`Game` is declared in `game.h` and implemented in `main.cpp`, so all level routing is in one place. It owns the active `Level` and menu state. Starting a level constructs its registered class and resets it after construction. Pause and Settings retain it; Main Menu and Dev Level Select release it. Automatic level completion/progression is not implemented yet.
+`Game` is declared in `game.h` and implemented in `main.cpp`, so all level routing is in one place. It owns the active `Level` and menu state. Starting a level constructs its registered class and resets it after construction. Pause and Settings retain it; Main Menu and Level Select release it. Automatic level completion/progression is not implemented yet.
 
 `GameWindow` handles platform and rendering details. It owns configuration, the Raylib context, resources and `Game`. Destruction releases the level first, then GPU/audio resources, then the context. Navigation tests can create `Game` without opening a window.
 
@@ -101,11 +101,11 @@ Define scripted events in the stage's events file. Use `OnReset` to restore stag
 
 ## Rendering
 
-Everything draws into one fixed 1600 by 900 render texture. `GameWindow::Draw` renders the game, then scales that texture to `Destination()`. Normal desktop windows keep a 16:9 content area through GLFW's native resize constraint and fill the window without bars. Maximized, fullscreen and browser windows fit the canvas with letterboxing. `MouseOnCanvas` reverses the same transform for input. DPI conversion uses the display scale rather than rounded logical window dimensions.
+The game draws directly to the physical framebuffer, using 1600×900 logical coordinates. `GameWindow::Draw` passes the aspect-fitted viewport to `Game::DrawFrame`. Normal desktop windows keep a 16:9 resize constraint; non-16:9 outputs letterbox. `MouseOnCanvas` reverses the same mapping, including display DPI.
 
-Draw UI directly in canvas coordinates. The level uses an ordinary Raylib `BeginMode2D(camera)` / `EndMode2D()` pair for the world. `resources.BeginClip(bounds)` and `EndScissorMode()` clip in those same canvas coordinates. Window/context setup lives in `engine/window/game_window.cpp`; asset loading lives in `engine/resources/resources.cpp`.
+Draw UI in logical coordinates. `Level::DrawScene` composes the world camera with the native viewport using `ScopedModelview` and `CameraModelview`; ordinary `BeginMode2D` would replace the viewport. The existing render queue, sprite assignment files, stand-ins and `DrawWorldFront` submission order are retained. `Level::DrawUi` runs after the world. `resources.BeginClip(bounds)` and `EndScissorMode()` use logical clip bounds.
 
-The font loads once at startup. `resources.DrawText` and `resources.MeasureText` use that shared font; missing fonts fall back to Raylib's default. The font and final canvas copy use bilinear filtering. Resizing scales the completed canvas, with no render-target reallocation, font cache or extra UI camera transforms. Keep layout changes in `ui/menus/menus.cpp` and use the shared text helpers.
+Font files are read once; `Resources` caches bitmap atlases by role and physical size. `MeasureText` uses logical metrics independently of raster size. Use shared text helpers for UI and world labels, with `FontRole::Heading` for headings and `FontRole::Typewriter` for dialogue. Desktop fullscreen is toggled from Settings, F11 or Alt+Enter. The Controls panel is a read-only keybinding reference.
 
 Placeholder artwork and optional texture slots are described in [ART_ASSETS.md](ART_ASSETS.md).
 
@@ -121,7 +121,7 @@ Mouse movement or clicks can change focus. A stationary pointer does not overrid
 | Movement | A/D or arrows; Space/W/Up to jump |
 | Pause | Esc/P |
 | Dialogue | Enter to reveal; T to replay, when enabled |
-| Restart | R or Restart Stage |
+| Restart | R or Restart |
 | Sliders | Drag, Left/Right or A/D, Home/End |
 
 ## Movement and dialogue
@@ -169,6 +169,6 @@ These paths assume a single-configuration Windows build. Use `build/vscode` for 
 
 Self-tests cover dialogue, config, movement, sliders, navigation, pause/reset, stage hooks and shared bird flight, swoops and hit cooldowns. Independent test groups continue after a failure and the process returns a failure status if any group fails. The smoke test uses a hidden Raylib window, synthetic input and real rendering. It checks font fallback, texture replacement, bird animation and facing, all screens and stage lifecycles.
 
-Rendering tests run at 960x540, 1280x720, 1366x768, 1600x900 and 1920x1080. They check the fixed canvas, scaled screen colors, clipping, input mapping and the maximize/fullscreen transitions. On Windows they also exercise the native resize handler for all eight edges and corners. Captures include menus and level dialogue at each size. Tests do not write user preferences.
+Rendering tests cover ten framebuffer sizes, including portrait, ultrawide and 16:10, with native geometry, glyph sharpness, sprite transforms, mapped sprite replacement, front text, clipping and input mapping. On Windows the smoke test also exercises native resizing. Tests do not write user preferences.
 
 Desktop is the tested target. Browser startup code is present; browser persistence still requires IDBFS integration.

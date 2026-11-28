@@ -1,6 +1,10 @@
 #include "engine/window/game_window.h"
 #include "test_support.h"
 #include "ui/dialogue/dialogue.h"
+#include "ui/menus/menus.h"
+#include "ui/theme.h"
+#include "engine/graphics/placeholder_art.h"
+#include "rlgl.h"
 
 #include <fstream>
 #include <iostream>
@@ -11,6 +15,7 @@ void TestLevelAuthoring();
 void TestEventManager();
 void TestGameData();
 void TestAssetRendering();
+void TestMappedLevelSpriteRendering();
 void TestAudioData();
 void TestAudioPlayback();
 void TestObjects();
@@ -20,7 +25,7 @@ void TestBirdRendering();
 void TestPlayerMovement();
 void TestPlayerTuning();
 void TestCrouchJumps();
-void TestJumpParticleRendering(const Resources &resources);
+void TestJumpParticleRendering();
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
 void TestWindowResize(void* handle);
 #endif
@@ -55,6 +60,20 @@ void TestSliders()
     Check(Near(destination.y, 90) && Near(destination.width, 960) && Near(destination.height, 540), "Letterbox sizing failed");
     const auto mapped = CanvasCoordinates({480, 360}, destination);
     Check(Near(mapped.x, 800) && Near(mapped.y, 450), "Mouse-to-canvas mapping failed");
+    // Verify aspect fit and inverse input mapping, including fractional and wide/tall outputs.
+    for (const auto size : {Vector2{640, 360}, Vector2{1366, 768}, Vector2{1920, 1200}, Vector2{2560, 1080}, Vector2{900, 1600}, Vector2{3840, 2160}}) {
+        const auto rect = CanvasDestination(size.x, size.y);
+        Check(Near(rect.width / canvasWidth, rect.height / canvasHeight, 0.0001f), "Viewport is not uniform");
+        const auto matrix = ViewportMatrix(rect);
+        const Vector2 point{123.4f, 567.8f};
+        const auto physical = Vector2Transform(point, matrix);
+        const auto restored = CanvasCoordinates(physical, rect);
+        Check(Near(restored.x, point.x) && Near(restored.y, point.y), "Viewport/input transform mismatch");
+        Camera2D camera{}; camera.zoom = 2; camera.target = {100, 200}; camera.offset = {800, 330};
+        const auto composed = Vector2Transform(point, CameraModelview(camera, matrix));
+        const auto expected = Vector2Transform(GetWorldToScreen2D(point, camera), matrix);
+        Check(Near(composed.x, expected.x) && Near(composed.y, expected.y), "Camera changed with framebuffer scale");
+    }
     Slider slider({100, 100, 400, 60}, 0, 1, 0.01f, 0.5f);
     InputFrame click;
     click.click = true;
@@ -113,6 +132,25 @@ void TestSliders()
     Check(config.targetFps == maxTargetFps && config.EffectiveTargetFps() == 0, "Unlimited failed to retain a changed cap");
     game.Update(0, ClickAction(game, ActionKind::ToggleUnlimitedFps));
     Check(config.EffectiveTargetFps() == maxTargetFps, "Disabling Unlimited failed to restore the cap");
+#if !defined(PLATFORM_WEB)
+    Check(!config.fullscreen, "Fullscreen should default to off");
+    game.TakeSettingsDirty();
+    game.Update(0, ClickAction(game, ActionKind::ToggleFullscreen));
+    Check(config.fullscreen && game.TakeSettingsDirty(), "Fullscreen checkbox failed");
+    const auto selected = game.Navigation().Selected();
+    InputFrame shortcut;
+    shortcut.confirm = true; // A shortcut wins over menu confirmation.
+    shortcut.completeDialogue = true;
+    shortcut.toggleFullscreen = true;
+    game.Update(0, shortcut);
+    Check(!config.fullscreen && game.TakeSettingsDirty() && game.Screen() == ScreenId::Settings &&
+          game.Navigation().Selected() == selected, "Fullscreen shortcut did not preserve the settings screen/focus");
+    const auto &checkbox = std::get<Button>(game.Navigation().Items()[selected]);
+    Check(checkbox.action.kind == ActionKind::ToggleFullscreen && !checkbox.checked, "Fullscreen checkbox became stale");
+    Check(FullscreenShortcut(true, false, false) && FullscreenShortcut(false, true, true) &&
+          FullscreenShortcut(true, true, true) && !FullscreenShortcut(false, true, false) &&
+          !FullscreenShortcut(false, false, true), "Fullscreen shortcut detection failed");
+#endif
     std::cout << "PASS: reusable sliders, track clicks, captured/clamped dragging, keyboard limits, settings and frame-rate choices\n";
 }
 
@@ -177,12 +215,14 @@ void TestConfig()
     Check(store.values.windowWidth == 1280 && store.values.targetFps == 120 && store.values.showFps, "Valid display settings were lost");
     Check(store.values.moveSpeed == 310 && store.values.gravity == GameConfig{}.gravity && store.values.jumpSpeed == -3, "Player config fallback failed");
     Check(Near(store.values.masterVolume, 0.7f, 0.001f) && !store.values.muted && store.values.charactersPerSecond == 0 && store.values.lastLevel == 3, "Valid audio/dialogue/session config failed");
+    store.values.fullscreen = true;
     store.values.unlimitedFps = true;
     store.values.targetFps = maxTargetFps;
     const auto saved = directory.path / "preferences/settings.yaml";
     Check(store.Save(saved), "Settings save failed");
     ConfigStore reloaded;
     Check(reloaded.Load(saved) && reloaded.values.windowWidth == 1280 && reloaded.values.moveSpeed == 310 && reloaded.values.lastLevel == 3, "Settings round trip failed");
+    Check(reloaded.values.fullscreen, "Fullscreen preference round trip failed");
     Check(reloaded.values.unlimitedFps && reloaded.values.EffectiveTargetFps() == 0 && reloaded.values.targetFps == maxTargetFps, "Unlimited/cap preferences round trip failed");
     {
         std::ofstream output(file);
@@ -192,6 +232,15 @@ void TestConfig()
     Check(!reloaded.Load(file) && reloaded.values.windowWidth == 900 && reloaded.values.windowHeight == 99999 &&
           reloaded.values.moveSpeed == 310 && Near(reloaded.values.masterVolume, 0.7f, 0.001f),
           "Invalid or duplicate settings replaced valid values");
+    // Old mode preferences remain readable but are discarded on save.
+    for (const auto* mode : {"hybrid", "native", "performance"}) {
+        { std::ofstream output(file); output << "window:\n  rendering_mode: " << mode << "\n  target_fps: 120\n"; }
+        Check(reloaded.LoadFile(file, ConfigFile::Settings) && reloaded.values.targetFps == 120,
+              "Legacy rendering mode prevented settings migration");
+    }
+    Check(reloaded.SaveFile(saved, ConfigFile::Settings), "Migrated settings save failed");
+    { std::ifstream input(saved); const std::string contents((std::istreambuf_iterator<char>(input)), {});
+      Check(contents.find("rendering_mode") == std::string::npos, "Obsolete rendering mode persisted"); }
     std::cout << "PASS: defaults, valid/malformed YAML subset and preferences round trip\n";
 }
 
@@ -297,14 +346,21 @@ void TestClimbingAndStamina()
     std::cout << "PASS: wall climbing, stamina drain, ground regen and reset\n";
 }
 
-void TestCanvasPresentation(const Resources& resources, Rectangle destination)
+void TestNativePresentation(Resources& resources, const Game& game, Rectangle destination)
 {
-    Image canvas = LoadImageFromTexture(resources.Canvas().texture);
-    ImageFlipVertical(&canvas);
+    // Compare the native framebuffer to a test-only logical reference render,
+    // sampling solid regions independently of differences in glyph rasterization.
     Image screen = LoadImageFromScreen();
+    const test::TestRenderTarget reference;
+    BeginTextureMode(reference.target);
+    ClearBackground(BLACK);
+    game.DrawFrame(resources, {0, 0, canvasWidth, canvasHeight});
+    EndTextureMode();
+    Image canvas = LoadImageFromTexture(reference.target.texture);
+    ImageFlipVertical(&canvas);
     const auto dpi = WindowPixelScale();
     Check(canvas.width == canvasWidth && canvas.height == canvasHeight,
-          "Resizing changed the fixed logical canvas");
+          "Logical reference target dimensions changed");
     // Sample solid regions of the real menu, away from filtered text and shape edges.
     for (const auto point : {Vector2{20, 20}, Vector2{700, 700}, Vector2{730, 730}, Vector2{1500, 800}})
     {
@@ -313,7 +369,7 @@ void TestCanvasPresentation(const Resources& resources, Rectangle destination)
             static_cast<int>((destination.x + point.x * destination.width / canvasWidth) * dpi.x),
             static_cast<int>((destination.y + point.y * destination.height / canvasHeight) * dpi.y));
         Check(std::abs(expected.r - actual.r) <= 2 && std::abs(expected.g - actual.g) <= 2 &&
-              std::abs(expected.b - actual.b) <= 2, "The scaled canvas is misplaced or discolored");
+              std::abs(expected.b - actual.b) <= 2, "Native frame is misplaced or discolored");
     }
     if (destination.x * dpi.x >= 1)
         Check(ColorIsEqual(GetImageColor(screen, 0, screen.height / 2), BLACK), "Side letterbox is not black");
@@ -321,6 +377,238 @@ void TestCanvasPresentation(const Resources& resources, Rectangle destination)
         Check(ColorIsEqual(GetImageColor(screen, screen.width / 2, 0), BLACK), "Top letterbox is not black");
     UnloadImage(canvas);
     UnloadImage(screen);
+}
+
+void TestNativeFonts(Resources& resources)
+{
+    for (const auto role : {FontRole::Regular, FontRole::Heading, FontRole::Typewriter})
+        if (!resources.HasCustomFont(role)) return; // Missing optional assets are tested separately.
+    constexpr std::string_view sample = "PIXEL FONT 123\nDialogue should wrap consistently.";
+    constexpr std::string_view paragraph = "A long dialogue sentence should keep exactly the same words on every line at every window size.";
+    const auto baseline = resources.MeasureText(sample, 32, 1, FontRole::Regular);
+    const auto referenceLines = WrapText(paragraph, 450, [&](std::string_view line) {
+        return resources.MeasureText(line, 26, 1, FontRole::Typewriter).x;
+    });
+    for (const int width : {640, 960, 1280, 1600, 1920, 2560, 3840}) {
+        const int height = width * 9 / 16;
+        const float scale = static_cast<float>(width) / canvasWidth;
+        RenderTexture2D target = LoadRenderTexture(width, height);
+        Check(target.id != 0, "Could not create native font test target");
+        resources.BeginFrame();
+        resources.SetViewport({0, 0, static_cast<float>(width), static_cast<float>(height)});
+        const auto measured = resources.MeasureText(sample, 32, 1, FontRole::Regular);
+        Check(Near(measured.x, baseline.x, 0.001f) && Near(measured.y, baseline.y, 0.001f),
+              "Logical text measurement depends on framebuffer size");
+        const auto lines = WrapText(paragraph, 450, [&](std::string_view line) {
+            return resources.MeasureText(line, 26, 1, FontRole::Typewriter).x;
+        });
+        Check(lines.size() == referenceLines.size(), "Dialogue line count changed on resize");
+        for (std::size_t i = 0; i < lines.size(); ++i)
+            Check(lines[i].begin == referenceLines[i].begin && lines[i].end == referenceLines[i].end,
+                  "Dialogue wrapping changed on resize");
+        BeginTextureMode(target);
+        ClearBackground(BLACK);
+        {
+            const ScopedModelview viewport(ViewportMatrix({0, 0, static_cast<float>(width), static_cast<float>(height)}));
+            for (const auto role : {FontRole::Regular, FontRole::Heading, FontRole::Typewriter}) {
+                const auto y = 50.0f + 80.0f * static_cast<int>(role);
+                const auto dimensions = resources.MeasureText("PIXEL FONT 123", 32, 1, role);
+                Check(dimensions.x > 0 && dimensions.y > 0, "Native font measurement failed");
+                resources.DrawText("PIXEL FONT 123", {50.3f, y + 0.6f}, 32, 1, WHITE, role);
+            }
+            const auto builds = resources.FontBuildCount();
+            resources.DrawText("CACHE REUSE", {50, 330}, 32, 1, WHITE, FontRole::Regular);
+            Check(resources.FontBuildCount() == builds, "Repeated draw rebuilt a cached font atlas");
+            // Clipping must also use physical coordinates after the UI transform.
+            resources.BeginClip({50, 430, 80, 28});
+            DrawRectangle(0, 400, 300, 100, RED);
+            EndScissorMode();
+            // A world label under a camera zoom must use a separate native-size atlas.
+            Camera2D camera{}; camera.zoom = 2; camera.offset = {0, 520};
+            {
+                const ScopedModelview world(CameraModelview(camera, rlGetMatrixModelview()));
+                resources.DrawText("WORLD", {25, 10}, 32, 1, WHITE);
+                const auto count = resources.FontBuildCount();
+                resources.DrawText("WORLD", {25, 50}, 32, 1, WHITE);
+                Check(resources.FontBuildCount() == count, "World label rebuilt the atlas");
+            }
+        }
+        EndTextureMode();
+        Image image = LoadImageFromTexture(target.texture);
+        ImageFlipVertical(&image);
+        for (int role = 0; role < 3; ++role) {
+            int solid = 0;
+            for (int y = static_cast<int>((40 + role * 80) * scale);
+                 y < static_cast<int>((105 + role * 80) * scale); ++y)
+                for (int x = 0; x < static_cast<int>(900 * scale); ++x) {
+                    const Color color = GetImageColor(image, x, y);
+                    Check(color.r == 0 || color.r == 255, "Native bitmap glyph has filtered edge pixels");
+                    if (color.r == 255) ++solid;
+                }
+            Check(solid > 20, "Native font did not produce visible glyphs");
+        }
+        Check(ColorIsEqual(GetImageColor(image, static_cast<int>(75 * scale), static_cast<int>(445 * scale)), RED) &&
+              ColorIsEqual(GetImageColor(image, static_cast<int>(40 * scale), static_cast<int>(445 * scale)), BLACK),
+              "Native UI clip did not match the physical destination");
+        int worldPixels = 0;
+        for (int y = static_cast<int>(520 * scale); y < static_cast<int>(700 * scale); ++y)
+            for (int x = 0; x < static_cast<int>(500 * scale); ++x) {
+                const auto color = GetImageColor(image, x, y);
+                Check(color.r == 0 || color.r == 255, "World glyph has filtered edges");
+                if (color.r == 255) ++worldPixels;
+            }
+        Check(worldPixels > 20, "World font did not render");
+        UnloadImage(image);
+        UnloadRenderTexture(target);
+        resources.BeginFrame();
+    }
+    std::cout << "PASS: all three bitmap font roles, native pixel edges and atlas reuse at multiple resolutions\n";
+}
+
+// Verify actual centered glyph pixels, not just the font advance box, and
+// the menu background fallback / optional main artwork composition.
+void TestMenuRendering(Resources& resources)
+{
+    if (resources.HasCustomFont(FontRole::Typewriter)) {
+        constexpr std::array<Rectangle, 4> boxes{{{100,100,30,34}, {180,100,67,34}, {300,100,58,34}, {420,100,49,34}}};
+        constexpr std::array<std::string_view, 4> labels{{"A", "ENTER", "DOWN", "F11"}};
+        for (const int width : {640, 960, 1366, 1600, 1920, 2560, 3840}) {
+            const int height = width * 9 / 16;
+            const Rectangle dest = CanvasDestination(width, height);
+            const float scale = dest.width / canvasWidth;
+            const test::TestRenderTarget target(width, height);
+            resources.BeginFrame();
+            resources.SetViewport(dest);
+            BeginTextureMode(target.target);
+            ClearBackground(BLACK);
+            {
+                const ScopedModelview viewport(ViewportMatrix(dest));
+                for (std::size_t k = 0; k < boxes.size(); ++k)
+                    resources.DrawCenteredText(labels[k], boxes[k], 20, 1, WHITE, FontRole::Typewriter);
+            }
+            EndTextureMode();
+            Image image = LoadImageFromTexture(target.target.texture);
+            ImageFlipVertical(&image);
+            for (const auto box : boxes) {
+                const float cx = dest.x + (box.x + box.width / 2) * scale;
+                const float cy = dest.y + (box.y + box.height / 2) * scale;
+                int left = width, right = -1, top = height, bottom = -1;
+                for (int y = static_cast<int>(dest.y + (box.y-5)*scale); y < dest.y + (box.y+box.height+5)*scale; ++y)
+                    for (int x = static_cast<int>(dest.x + (box.x-5)*scale); x < dest.x + (box.x+box.width+5)*scale; ++x) {
+                        const auto pixel = GetImageColor(image, x, y);
+                        Check(pixel.r == 0 || pixel.r == 255, "Centered key glyph has filtered edges");
+                        if (pixel.r != 255) continue;
+                        left = std::min(left,x); right = std::max(right,x);
+                        top = std::min(top,y); bottom = std::max(bottom,y);
+                    }
+                Check(right >= left && bottom >= top, "Centered key glyph was not drawn");
+                Check(std::abs((left+right+1)*0.5f-cx) <= 2 && std::abs((top+bottom+1)*0.5f-cy) <= 2,
+                      "Visible key glyph is not centered in its logical bounds");
+            }
+            UnloadImage(image);
+        }
+    }
+    TestDirectory fixture;
+    const auto render = [&](Resources& res, ArtId menu, bool mainUi = false) {
+        const test::TestRenderTarget target;
+        res.BeginFrame();
+        res.SetViewport({0,0,canvasWidth,canvasHeight});
+        BeginTextureMode(target.target);
+        ClearBackground(RED);
+        if (mainUi) {
+            GameConfig config;
+            config.showFps = false;
+            Game game(config);
+            game.DrawFrame(res, {0,0,canvasWidth,canvasHeight});
+        } else art::MenuBackdrop(res, menu);
+        EndTextureMode();
+        Image image = LoadImageFromTexture(target.target.texture);
+        ImageFlipVertical(&image);
+        return image;
+    };
+    {
+        Resources missing(fixture.path);
+        for (const auto menu : {ArtId::MainMenu, ArtId::Settings, ArtId::StageSelect, ArtId::Pause}) {
+            Image image = render(missing,menu);
+            for (const auto point : {Vector2{5,5}, Vector2{800,450}, Vector2{1350,160}, Vector2{1590,890}})
+                Check(ColorIsEqual(GetImageColor(image,point.x,point.y),theme::background), "Default menu backdrop is not solid");
+            UnloadImage(image);
+        }
+        Image main = render(missing,ArtId::MainMenu,true);
+        for (int y = 0; y < canvasHeight; y += 7) for (int x = 680; x < canvasWidth; x += 7)
+            Check(ColorIsEqual(GetImageColor(main,x,y),theme::background), "Main menu right side is not clear for artwork");
+        UnloadImage(main);
+    }
+    const auto path = fixture.path / artPaths[static_cast<std::size_t>(ArtId::MainMenu)];
+    std::filesystem::create_directories(path.parent_path());
+    const Color marker{25,112,173,255};
+    Image art = GenImageColor(16,9,marker);
+    const bool exported = ExportImage(art,path.string().c_str());
+    UnloadImage(art);
+    Check(exported,"Could not export main-menu background fixture");
+    {
+        Resources withArt(fixture.path);
+        Image main = render(withArt,ArtId::MainMenu,true);
+        Check(ColorIsEqual(GetImageColor(main,1200,450),marker) && ColorIsEqual(GetImageColor(main,20,20),marker),
+              "Optional main-menu artwork does not cover the canvas");
+        Check(!ColorIsEqual(GetImageColor(main,100,450),marker), "Main-menu buttons are behind the artwork");
+        UnloadImage(main);
+    }
+    std::cout << "PASS: centered native key glyphs, solid menu defaults and optional main-menu art\n";
+}
+
+// Render the same game state at many framebuffer sizes, including non-16:9.
+// Compare only interior reference pixels (not texture or geometry edges), where
+// fractional sampling is expected to vary by at most a physical pixel.
+void TestNativeScale(Resources& resources, const Game& game, GameConfig& config)
+{
+    const bool showFps = config.showFps;
+    config.showFps = false;
+    auto render = [&](int width, int height) {
+        const test::TestRenderTarget target(width, height);
+        BeginTextureMode(target.target);
+        ClearBackground(BLACK);
+        game.DrawFrame(resources, CanvasDestination(width, height));
+        EndTextureMode();
+        Image result = LoadImageFromTexture(target.target.texture);
+        ImageFlipVertical(&result);
+        return result;
+    };
+    const Image reference = render(canvasWidth, canvasHeight);
+    const auto same = [](Color a, Color b) {
+        return std::abs(a.r - b.r) <= 2 && std::abs(a.g - b.g) <= 2 && std::abs(a.b - b.b) <= 2;
+    };
+    for (const auto size : {Vector2{640,360}, Vector2{960,600}, Vector2{1280,720}, Vector2{1366,768},
+                             Vector2{1920,1080}, Vector2{1920,1200}, Vector2{2560,1080}, Vector2{2560,1440},
+                             Vector2{3840,2160}, Vector2{900,1600}}) {
+        const int width = static_cast<int>(size.x), height = static_cast<int>(size.y);
+        const Rectangle dest = CanvasDestination(width, height);
+        const Image image = render(width, height);
+        if (dest.y >= 1) Check(ColorIsEqual(GetImageColor(image, width/2, 0), BLACK) &&
+            ColorIsEqual(GetImageColor(image, width/2, height-1), BLACK), "Native rendering broke vertical letterbox");
+        if (dest.x >= 1) Check(ColorIsEqual(GetImageColor(image, 0, height/2), BLACK) &&
+            ColorIsEqual(GetImageColor(image, width-1, height/2), BLACK), "Native rendering broke horizontal letterbox");
+        int total = 0, matching = 0;
+        for (int y = 8; y < canvasHeight-8; y += 13) for (int x = 8; x < canvasWidth-8; x += 13) {
+            const Color expected = GetImageColor(reference, x, y);
+            bool interior = true;
+            for (int dy : {-3, 0, 3}) for (int dx : {-3, 0, 3})
+                interior &= same(expected, GetImageColor(reference, x+dx, y+dy));
+            if (!interior) continue;
+            const int px = static_cast<int>(dest.x + (x+0.5f)*dest.width/canvasWidth);
+            const int py = static_cast<int>(dest.y + (y+0.5f)*dest.height/canvasHeight);
+            ++total;
+            if (same(expected, GetImageColor(image, px, py))) ++matching;
+        }
+        if (!(total > 100 && matching >= total * 0.96f)) {
+            std::cerr << "Scale " << width << "x" << height << ": " << matching << "/" << total << " interior samples match\n";
+            Check(false, "Native frame geometry changed with framebuffer size");
+        }
+        UnloadImage(image);
+    }
+    UnloadImage(reference);
+    config.showFps = showFps;
+    std::cout << "PASS: native frame geometry and letterboxing across ten framebuffer sizes\n";
 }
 
 void TestSession()
@@ -348,6 +636,12 @@ void TestSession()
     game.TakeSettingsDirty(); // Stage selection also changes a setting.
     game.Update(0.1f, ClickAction(game, ActionKind::ToggleFps));
     Check(game.Screen() == ScreenId::Settings && config.showFps && game.TakeSettingsDirty(), "Settings mutation failed");
+#if !defined(PLATFORM_WEB)
+    game.Update(0.1f, ClickAction(game, ActionKind::ToggleFullscreen));
+    Check(config.fullscreen && game.TakeSettingsDirty(), "Paused settings fullscreen toggle failed");
+    game.Update(0.1f, {.toggleFullscreen = true});
+    Check(!config.fullscreen && game.TakeSettingsDirty(), "Paused settings fullscreen shortcut failed");
+#endif
     Check(game.ActiveLevel() == level && level->ElapsedSeconds() == elapsed, "Settings advanced or replaced the paused level");
     game.Update(0, ClickAction(game, ActionKind::Back));
     Check(game.Screen() == ScreenId::Paused, "Settings did not return to pause");
@@ -414,8 +708,9 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
 #endif
     // Exercise the actual asset loader and renderer with an isolated temporary export.
     // No real source assets or user preferences are changed.
-    if (FileExists((FindResourceDirectory() / uiFontPath).string().c_str()))
-        Check(resources.HasCustomFont(), "The configured font exists but did not load");
+    for (std::size_t i = 0; i < fontPaths.size(); ++i)
+        if (FileExists((FindResourceDirectory() / fontPaths[i]).string().c_str()))
+            Check(resources.HasCustomFont(static_cast<FontRole>(i)), "A configured font exists but did not load");
     {
         TestDirectory fixture;
         const auto spritePath = fixture.path / artPaths[static_cast<std::size_t>(ArtId::Student)];
@@ -427,13 +722,14 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
         Check(exported, "Could not create artwork fixture");
         Resources fixtureResources(fixture.path);
         Check(!fixtureResources.HasCustomFont() && IsFontValid(fixtureResources.UiFont()), "Missing font did not fall back safely");
-        BeginTextureMode(fixtureResources.Canvas());
+        const test::TestRenderTarget fixtureTarget;
+        BeginTextureMode(fixtureTarget.target);
         ClearBackground(BLACK);
         const bool drewSprite = fixtureResources.DrawArt(ArtId::Student, {0,0,80,80});
         const bool drewMissing = fixtureResources.DrawArt(ArtId::Entity, {100,0,80,80});
         EndTextureMode();
         Check(drewSprite && !drewMissing, "Optional artwork selection/fallback failed");
-        Image rendered = LoadImageFromTexture(fixtureResources.Canvas().texture);
+        Image rendered = LoadImageFromTexture(fixtureTarget.target.texture);
         ImageFlipVertical(&rendered);
         const Color center = GetImageColor(rendered, 40, 40);
         const Color margin = GetImageColor(rendered, 5, 40);
@@ -442,23 +738,33 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
               "Artwork did not render or preserve its aspect ratio");
     }
     std::cout << "PASS: custom font, missing-font fallback and optional texture replacement\n";
+    TestNativeFonts(resources);
+    TestMenuRendering(resources);
     TestAssetRendering();
+    TestMappedLevelSpriteRendering();
     TestBirdRendering();
-    TestJumpParticleRendering(resources);
+    TestJumpParticleRendering();
     TestAudioPlayback();
     auto click = [&](ActionKind kind, int value = 0) { Frame(0, ClickAction(game, kind, value)); };
-    auto capture = [&](const std::string& name, bool screen = false)
+    auto capture = [&](const std::string& name, bool /*legacyScreenFlag*/ = true)
     {
         if (captureDirectory.empty()) return;
         std::filesystem::create_directories(captureDirectory);
-        Image image = screen ? LoadImageFromScreen() : LoadImageFromTexture(resources.Canvas().texture);
-        if (!screen) ImageFlipVertical(&image);
+        // The entire frame is drawn directly to the framebuffer. Draw the same state
+        // twice before readback so both swap buffers contain the final composition.
+        Draw();
+        Draw();
+        Image image = LoadImageFromScreen();
         const auto path = captureDirectory / (name + ".png");
         const bool saved = ExportImage(image, path.string().c_str());
         UnloadImage(image);
         Check(saved, "Could not capture a rendered smoke-test frame");
     };
     Frame(0, {});
+    const auto stableBuilds = resources.FontBuildCount();
+    Frame(0, {});
+    Check(resources.FontBuildCount() == stableBuilds, "Unchanged menu rebuilt font resources");
+    TestNativeScale(resources, game, config.values);
     capture("main_menu");
     click(ActionKind::OpenLevels);
     capture("level_select");
@@ -469,6 +775,7 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
               "Smoke test could not open a level for rendering");
         Frame(0, {.completeDialogue = true});
         capture("stage_" + std::to_string(static_cast<int>(level.id)));
+        TestNativeScale(resources, game, config.values);
         if (level.id == LevelId::Level1) {
             Frame(1.0f / 60, {.duck = true});
             Check(game.ActiveLevel()->GetPlayer().Crouching(), "Rendered crouch lost its shared player state");
@@ -488,6 +795,7 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
             capture("stage_1_timer_docked");
         }
         Frame(0, {.pause = true});
+        TestNativeScale(resources, game, config.values);
         capture("pause");
         click(ActionKind::OpenLevels);
     }
@@ -499,7 +807,7 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     Frame(0, {}); // Draw both swap buffers before reading screen pixels.
     Check(IsWindowMaximized(), "The window did not maximize");
     capture("maximized", true);
-    TestCanvasPresentation(resources, Destination());
+    TestNativePresentation(resources, game, Destination());
     RestoreWindow();
     PollInputEvents();
 #if defined(_WIN32)
@@ -519,6 +827,7 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     resizedClick.mouse = CanvasCoordinates(windowPoint, destination);
     Frame(0, resizedClick);
     Check(game.Screen() == ScreenId::Settings, "Resized menu hit testing failed");
+    TestNativeScale(resources, game, config.values);
     capture("settings");
     if (!captureDirectory.empty())
     {
@@ -532,7 +841,7 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
         SetWindowSize(static_cast<int>(size.x), static_cast<int>(size.y));
         Frame(0, {});
         Frame(0, {});
-        TestCanvasPresentation(resources, Destination());
+        TestNativePresentation(resources, game, Destination());
         if (captureDirectory.empty()) continue;
         const auto suffix = std::to_string(static_cast<int>(size.x)) + "x" + std::to_string(static_cast<int>(size.y));
         capture("main_" + suffix);
@@ -548,10 +857,13 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
 #if defined(RAGE_DESKTOP_GLFW)
     // Exclusive fullscreen invalidates hidden-window readback on some drivers,
     // so check the mode and viewport after completing the windowed pixel checks.
-    ToggleFullscreen();
+    SetWindowSize(960, 540);
     PollInputEvents();
-    Frame(0, {});
-    Check(IsWindowFullscreen(), "The window did not enter fullscreen");
+    click(ActionKind::OpenSettings);
+    click(ActionKind::ToggleFullscreen);
+    PollInputEvents();
+    Check(IsWindowFullscreen() && config.values.fullscreen && game.Screen() == ScreenId::Settings,
+          "Settings checkbox did not enter fullscreen");
     const auto fullscreen = Destination();
     Check(Near(fullscreen.width / fullscreen.height, 16.0f / 9) &&
           fullscreen.x >= -0.01f && fullscreen.y >= -0.01f &&
@@ -559,11 +871,14 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
           fullscreen.y + fullscreen.height <= GetRenderHeight() + 0.01f &&
           (Near(fullscreen.width, GetRenderWidth()) || Near(fullscreen.height, GetRenderHeight())),
           "Fullscreen did not fit the 16:9 canvas within the display");
-    ToggleFullscreen();
+    Frame(0, {.toggleFullscreen = true});
     PollInputEvents();
-    Check(!IsWindowFullscreen(), "Fullscreen did not restore the window");
+    Check(!IsWindowFullscreen() && !config.values.fullscreen && game.Screen() == ScreenId::Settings,
+          "Fullscreen shortcut did not restore the window");
+    Check(Near(GetScreenWidth(), 960, 2) && Near(GetScreenHeight(), 540, 2), "Windowed size was not restored");
+    click(ActionKind::Back);
 #endif
-    std::cout << "PASS: raylib rendering for menus and all stages, scaled canvas, resizing and fullscreen\n";
+    std::cout << "PASS: raylib rendering for menus and all stages, single native world and UI, resizing and fullscreen\n";
     return 0;
 }
 }

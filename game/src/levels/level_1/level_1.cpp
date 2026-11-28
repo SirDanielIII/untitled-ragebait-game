@@ -34,6 +34,20 @@ namespace rage {
         constexpr char anvilId[] = "doorway-anvil";
         constexpr float anvilPoofDuration = 0.45f;
         constexpr char exitId[] = "exit-level1";
+        // Signs are much smaller than menu text. Fit to their actual world-space
+        // bounds without the UI helper's 10-logical-pixel minimum.
+        void DrawSignText(const Resources &resources, std::string_view text, Rectangle bounds,
+                          float size, Color color, FontRole role = FontRole::Regular) {
+            constexpr float spacing = 0.5f;
+            size = std::min(size, bounds.height);
+            float width = resources.MeasureText(text, size, spacing, role).x;
+            while (width > bounds.width && size > 1.0f) {
+                size = std::max(1.0f, std::min(size - 0.25f, size * bounds.width / width));
+                width = resources.MeasureText(text, size, spacing, role).x;
+            }
+            resources.DrawText(text, {bounds.x + (bounds.width - width) / 2,
+                                     bounds.y + (bounds.height - size) / 2}, size, spacing, color, role);
+        }
         void DrawAnvil(Rectangle b) {
             const Color steel{62, 73, 92, 255};
             DrawTriangle({b.x, b.y + 2}, {b.x + 37, b.y + 22}, {b.x + 37, b.y + 2}, steel);
@@ -258,7 +272,7 @@ namespace rage {
             DrawRectangleRec({0, floorY, roadStart, 120}, {108, 119, 133, 255});
             DrawRectangleRec({0, floorY, roadStart, 10}, {191, 199, 206, 255});
             for (int x = 0; x < static_cast<int>(roadStart); x += 72)
-                DrawLine(x, 1488, x, 1520, {76, 91, 108, 255});
+                DrawLineEx({static_cast<float>(x), 1488}, {static_cast<float>(x), 1520}, 1.0f, {76, 91, 108, 255});
             DrawRectangleRec({roadStart - 12, floorY + 10, 12, 110}, {65, 76, 91, 255});
             // Mask any car pixels still above the deck just inside the mouth.
             DrawRectangleRec({roadStart - 17, floorY - 5, 17, 15}, {191, 199, 206, 255});
@@ -612,7 +626,7 @@ namespace rage {
             DrawCircle(17, 15, 2, BLACK);
             DrawTriangle({13, 8}, {25, 8}, {12, 0}, PINK);
             DrawEllipse(47, static_cast<int>(9 + flap), 19, 9, RAYWHITE);
-            DrawLine(81, 19, 92, 11, PINK);
+            DrawLineEx({81, 19}, {92, 11}, 1.0f, PINK);
             rlPopMatrix();
         }
 
@@ -687,7 +701,7 @@ namespace rage {
     const LevelDefinition& Level1Definition() {
         static const LevelDefinition definition{
             .id = LevelId::Level1,
-            .title = "Level 1 - Walk to School",
+            .title = "Level 1",
             .description = "Sidewalk -> road -> telephone poles -> clouds -> rainbow -> campus",
             .plannedContent = "Jump sidewalk obstacles, dodge right-to-left traffic and its chicken pile-up, "
                               "dodge birds on the poles, cross live wires, duck flying pigs (hold S), "
@@ -1282,8 +1296,8 @@ namespace rage {
         // The chicken is scenery, but its presence causes the traffic event.
         stand("chicken", [this](Rectangle) {
             const int cx = static_cast<int>(chickenX);
-            DrawLine(cx + 12, 1473, cx + 9, 1479, ORANGE);
-            DrawLine(cx + 20, 1473, cx + 23, 1479, ORANGE);
+            DrawLineEx({static_cast<float>(cx + 12), 1473}, {static_cast<float>(cx + 9), 1479}, 1.0f, ORANGE);
+            DrawLineEx({static_cast<float>(cx + 20), 1473}, {static_cast<float>(cx + 23), 1479}, 1.0f, ORANGE);
             DrawEllipse(cx + 18, 1465, 17, 11, {250, 245, 225, 255});
             DrawCircle(cx + 4, 1454, 8, {250, 245, 225, 255});
             DrawCircle(cx + 3, 1447, 4, RED);
@@ -1412,29 +1426,28 @@ namespace rage {
         });
     }
 
-    void Level1::DrawWorldFront(const Resources&) const {
+    void Level1::DrawWorldFront(const Resources& resources) const {
         // Words are drawn after every object, so they stay readable on top of sprites.
-        DrawText("SCHOOL >", 500, 1353, 12, RAYWHITE);
-        DrawText("< WRONG WAY", 646, 1359, 12, RAYWHITE);
-        DrawText("< UNDERPASS", static_cast<int>(roadStart - 110), static_cast<int>(floorY + 29), 11, RAYWHITE);
-        DrawText("TRAFFIC TUNNEL", static_cast<int>(tunnelEntranceX + 53), static_cast<int>(floorY - 135 + 31), 12, RAYWHITE);
-        DrawText("CHECKPOINT", 3703, 810, 14, RAYWHITE);
-        DrawText("HOLD S: DUCK", 4750, 652, 13, RAYWHITE);
+        DrawSignText(resources, "SCHOOL >", {500, 1353, 70, 18}, 12, RAYWHITE);
+        DrawSignText(resources, "< WRONG WAY", {646, 1359, 88, 18}, 12, RAYWHITE);
+        DrawSignText(resources, "< UNDERPASS", {roadStart - 110, floorY + 28, 79, 15}, 11, RAYWHITE);
+        DrawSignText(resources, "TRAFFIC TUNNEL", {tunnelEntranceX + 53, floorY - 135 + 29, 124, 20}, 12, RAYWHITE);
+        resources.DrawText("CHECKPOINT", {3703, 810}, 14, 1, RAYWHITE);
+        DrawSignText(resources, "HOLD S: DUCK", {4750, 652, 102, 16}, 13, RAYWHITE);
         if (!pileupSettled && pileupStarted && !crashImpact) {
             const Color amber{255, 199, 69, 255};
-            DrawText("CHICKEN CROSSING", static_cast<int>(chickenX) - 53, 1411, 13, amber);
+            DrawSignText(resources, "CHICKEN CROSSING", {chickenX - 53, 1411, 130, 17}, 13, amber);
             const auto& lead = traffic[1].bounds;
             if (pileupSeconds >= 0 && lead.x - chickenX < 190)
-                DrawText("BRAKE!", static_cast<int>(lead.x + 34), static_cast<int>(lead.y - 20), 16, GOLD);
+                resources.DrawText("BRAKE!", {lead.x + 34, lead.y - 20}, 16, 1, GOLD);
         }
         if (crashImpact && pileupSeconds < blastDuration) {
             const Blast blast = BlastAt(CrashImpact(), pileupSeconds);
-            DrawText("CRASH!", static_cast<int>(blast.center.x - 49), static_cast<int>(blast.center.y - 14),
-                     28, Fade({100, 53, 55, 255}, blast.opacity));
+            DrawSignText(resources, "CRASH!", {blast.center.x - 49, blast.center.y - 14, 98, 28}, 28, Fade({100, 53, 55, 255}, blast.opacity), FontRole::Heading);
         }
         if (pileupStarted && !crashImpact && GetPlayer().Position().x > 2620.0f)
-            DrawText("CHICKEN CROSSING - WAIT FOR THE CRASH", 2648, 1320, 12, GOLD);
-        if (pileupSettled) DrawText("CLIMB UP!", 2710, 1338, 17, RAYWHITE);
+            resources.DrawText("CHICKEN CROSSING - WAIT FOR THE CRASH", {2648, 1320}, 12, 1, GOLD);
+        if (pileupSettled) resources.DrawText("CLIMB UP!", {2710, 1338}, 17, 1, RAYWHITE);
         const Rectangle player = GetPlayer().Bounds();
         bool pigApproaching = false;
         for (const auto& flyer : pigs) {
@@ -1443,11 +1456,11 @@ namespace rage {
         }
         if (!GetPlayer().Crouching() && pigApproaching) {
             const auto p = GetPlayer().Position();
-            DrawText("HOLD S!", static_cast<int>(p.x - 12), static_cast<int>(p.y - 50), 14, GOLD);
+            resources.DrawText("HOLD S!", {p.x - 12, p.y - 50}, 14, 1, GOLD);
         }
-        DrawText("RAINBOW SLIDE >", static_cast<int>(rainbowGate.x + 13), static_cast<int>(rainbowEntrance.y - 32), 14, RAYWHITE);
-        DrawText("LECTURE HALL", 7019, 1308, 18, {44, 48, 66, 255});
-        if (campusReached) DrawText("YOU MADE IT!", 6915, 1420, 15, {160, 237, 179, 255});
+        DrawSignText(resources, "RAINBOW SLIDE >", {rainbowGate.x + 13, rainbowEntrance.y - 32, 118, 18}, 14, RAYWHITE);
+        DrawSignText(resources, "LECTURE HALL", {7019, 1308, 162, 18}, 18, {44, 48, 66, 255});
+        if (campusReached) resources.DrawText("YOU MADE IT!", {6915, 1420}, 15, 1, {160, 237, 179, 255});
     }
 
     void Level1::DrawHud(const Resources& resources) const {

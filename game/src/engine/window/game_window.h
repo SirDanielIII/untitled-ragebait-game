@@ -38,7 +38,9 @@ namespace rage {
 
         void SavePreferences();
 
-        Rectangle Destination() const; // Screen coordinates; letterbox only when maximized/fullscreen.
+        void ApplyFullscreenPreference();
+
+        Rectangle Destination() const; // Screen coordinates; aspect-fit at every window size.
         Vector2 MouseOnCanvas() const;
 
         ConfigStore config;
@@ -48,8 +50,8 @@ namespace rage {
         RaylibContext context;
         Resources resources;
         Game game;
-        std::string settingsStatus = "Preferences ready.";
         bool preferencesPending = false;
+        bool restoreMaximized = false;
     };
 
     int RunSelfTests();

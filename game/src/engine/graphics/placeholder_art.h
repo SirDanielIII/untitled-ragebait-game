@@ -2,7 +2,7 @@
 #include "engine/resources/resources.h"
 
 namespace rage::art {
-    // Each function tries its named art slot, then draws a temporary shape fallback.
+    // Optional menu image over an opaque solid-color background.
     void MenuBackdrop(const Resources &resources, ArtId screen);
 
     void Student(const Resources &resources, Rectangle bounds);

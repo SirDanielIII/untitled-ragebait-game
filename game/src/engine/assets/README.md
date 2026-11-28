@@ -225,7 +225,7 @@ if (const auto *sign = assets.Find("exit_sign"))
     queue.SubmitFitted(assets, *sign, 0, {2380, 500, 60, 60}, Facing::None, Camera().zoom);
 ```
 
-The sprite keeps its shape (it is never stretched), its size is rounded down so every art pixel stays a whole number of screen pixels, and its pivot is anchored to the same point of the rectangle: bottom-centre on the rectangle's bottom edge, top-left in its corner, centre in its middle. A missing PNG draws its placeholder in the same area. Pass `Camera().zoom` in levels; use `1` for drawing straight onto the 1600×900 canvas.
+The sprite keeps its shape (it is never stretched), its size is rounded down so every art pixel stays a whole number of logical pixels at the selected camera zoom, and its pivot is anchored to the same point of the rectangle: bottom-centre on the rectangle's bottom edge, top-left in its corner, centre in its middle. A missing PNG draws its placeholder in the same area. Pass `Camera().zoom` in levels; use `1` for drawing in the 1600×900 logical UI space.
 
 ### Choosing coordinates
 
@@ -315,7 +315,7 @@ Keep `pixelScale × camera zoom` a whole number (with zoom 2, any whole `pixelSc
 Two more things keep pixel art clean, with nothing for you to do:
 
 - **Pixel snapping.** The camera and the player are drawn at whole canvas pixels (`Level::SnapToPixels`), so edges don't flicker as the camera scrolls. Physics still uses exact positions. Use `SnapToPixels` for your own sprites too.
-- **Window scaling.** The game draws on a fixed 1600×900 canvas, then copies it to the window (`ChoosePresentation` in `engine/graphics/layout.h`). At exactly 1×, 2× and so on it uses nearest-neighbour. At in-between sizes, such as a maximized window or a laptop at 125% display scaling, it enlarges with nearest-neighbour to the next whole multiple, then shrinks smoothly to fit, so pixels stay crisp. Below 1× it shrinks smoothly.
+- **Window scaling.** A single native framebuffer pass aspect-fits the 1600×900 logical layout. Camera transforms preserve pivots, animation frames, facing, layers and hitboxes. Sprites retain nearest-neighbour filtering; at fractional scales a source pixel can span uneven numbers of physical pixels.
 
 ## Changing existing art
 
@@ -381,7 +381,7 @@ int frame = animator.Frame(*a);                             // when drawing
 bool done = animator.Finished(*a);                          // for non-looping animations
 ```
 
-How it fits together: `Resources` owns the one `AssetManager` and loads it at startup. `Level::Draw` creates a `RenderQueue` each frame, queues the backdrop, platforms, the level's `SubmitSprites`, then the player, and flushes it. The player's animation is chosen in `Level::UpdatePlayerAnimation` and drawn in `Level::SubmitPlayer` (`levels/level.cpp`).
+How it fits together: `Resources` owns the one `AssetManager` and loads it at startup. `Level::DrawScene` creates a `RenderQueue` each frame, queues the backdrop, `DrawWorld`, the level's `SubmitSprites`, `DrawWorldFront`, particles and the player, then flushes it in the existing layer order. The player's animation is chosen in `Level::UpdatePlayerAnimation` and drawn in `Level::SubmitPlayer` (`levels/level.cpp`).
 
 **One rule for queued lambdas:** jobs run later, at `Flush()`, so a lambda must not capture a temporary local variable by reference (`[&]`). Capture it by copy instead. `queue.Submit(assets, *sprite, ...)` is always safe.
 

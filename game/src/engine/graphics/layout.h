@@ -1,6 +1,8 @@
 #pragma once
 
 #include "raylib.h"
+#include "raymath.h"
+#include "rlgl.h"
 #include <algorithm>
 #include <cmath>
 
@@ -27,32 +29,34 @@ namespace rage {
         };
     }
 
-    // How the finished canvas is copied to the window, so pixel art stays crisp at any size.
-    //   Exact:        the window is a whole multiple of the canvas (1x, 2x...): nearest-neighbour.
-    //   SharpUpscale: enlarge with nearest-neighbour to the next whole multiple (`factor`), then
-    //                 shrink that to the window smoothly. Edges stay crisp; at most a one-pixel
-    //                 soft seam where an art pixel straddles two screen pixels.
-    //   Smooth:       shrinking below 1x, or a size too large to enlarge first: plain bilinear.
-    enum class PresentMode { Exact, SharpUpscale, Smooth };
+    // Logical coordinates stay unchanged. Apply the viewport AFTER the camera and
+    // local sprite transforms, directly in the framebuffer's physical pixels.
+    inline Matrix ViewportMatrix(Rectangle physical) {
+        return MatrixMultiply(MatrixScale(physical.width / canvasWidth, physical.height / canvasHeight, 1),
+                              MatrixTranslate(physical.x, physical.y, 0));
+    }
 
-    struct Presentation {
-        PresentMode mode = PresentMode::Smooth;
-        int factor = 1;
+    // Keep the viewport in modelview, not rlPushMatrix's per-vertex transform.
+    // Raylib's BeginMode2D resets modelview and would discard the viewport.
+    // Flush on entry/exit so queued geometry uses the correct camera/viewport.
+    class ScopedModelview {
+    public:
+        explicit ScopedModelview(Matrix matrix) : previous(rlGetMatrixModelview()) {
+            rlDrawRenderBatchActive();
+            rlSetMatrixModelview(matrix);
+        }
+        ~ScopedModelview() {
+            rlDrawRenderBatchActive();
+            rlSetMatrixModelview(previous);
+        }
+        ScopedModelview(const ScopedModelview &) = delete;
+        ScopedModelview &operator=(const ScopedModelview &) = delete;
+    private:
+        Matrix previous;
     };
 
-    // Largest intermediate width to allocate. Most GPUs support 8192-pixel textures.
-    inline constexpr int maxPresentWidth = 8192;
-
-    // `scale` = real window pixels per canvas pixel (e.g. 1.6 when maximized on a 1440p screen).
-    inline Presentation ChoosePresentation(float scale) {
-        if (!std::isfinite(scale) || scale <= 0) return {};
-        const float nearest = std::round(scale);
-        if (nearest >= 1 && std::abs(scale - nearest) < 0.002f)
-            return {PresentMode::Exact, static_cast<int>(nearest)};
-        if (scale < 1) return {};
-        const int factor = static_cast<int>(std::ceil(scale));
-        if (canvasWidth * factor > maxPresentWidth) return {};
-        return {PresentMode::SharpUpscale, factor};
+    inline Matrix CameraModelview(Camera2D camera, Matrix viewport) {
+        return MatrixMultiply(GetCameraMatrix2D(camera), viewport);
     }
 
     inline Vector2 CanvasCoordinates(Vector2 point, Rectangle destination) {

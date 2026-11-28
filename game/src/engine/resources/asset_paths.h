@@ -3,8 +3,11 @@
 #include <cstddef>
 
 namespace rage {
-    // Font source: game/resources/fonts/ARCADEPI.TTF. Paths are relative to resources.
-    inline constexpr const char *uiFontPath = "fonts/ARCADEPI.TTF";
+    // Paths are relative to resources. Keep in FontRole order.
+    inline constexpr const char *uiFontPath = "fonts/Silkscreen-Regular.ttf";
+    inline constexpr std::array<const char *, 3> fontPaths = {
+        uiFontPath, "fonts/Silkscreen-Bold.ttf", "fonts/Jersey10-Regular.ttf"
+    };
 
     enum class ArtId : std::size_t {
         MainMenu, Settings, StageSelect, Pause, Student, Entity, Platform,

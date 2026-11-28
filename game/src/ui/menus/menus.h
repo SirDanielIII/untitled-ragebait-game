@@ -15,7 +15,7 @@ namespace rage {
 
     void DrawMainMenu(const Resources &resources);
 
-    void DrawSettingsMenu(const Resources &resources, const GameConfig &config, const std::string &status);
+    void DrawSettingsMenu(const Resources &resources, const GameConfig &config);
 
     void DrawLevelSelect(const Resources &resources, int selected);
 

@@ -422,31 +422,35 @@ namespace rage {
         });
     }
 
-    void Level::Draw(const Resources &resources, const GameConfig &config) const {
+    void Level::DrawScene(const Resources &resources, const GameConfig &config) const {
         resources.BeginClip(worldViewport);
         DrawRectangleRec(worldViewport, Color{36, 44, 60, 255});
-        BeginMode2D(camera);
-        RenderQueue queue;
-        queue.Submit(Layer::Background, [&] {
-            art::LevelBackdrop(resources, definition.backdrop, definition.world, definition.accent);
-        });
-        queue.Submit(Layer::Middle, [&] {
-            DrawWorld(resources);
-        });
-        SubmitSprites(queue, resources);
-        queue.Submit(Layer::Middle, [&] {
-            DrawWorldFront(resources);
-        });
-        jumpParticles.SubmitSprites(queue, camera.zoom);
-        SubmitPlayer(queue, resources);
-        queue.Flush();
-        if (config.showHitboxes) {
-            collisions.DrawDebug();
-            scriptCollisions.DrawDebug();
-            DrawRectangleLinesEx(player.Bounds(), 1, MAGENTA);
-        }
-        EndMode2D();
+        {
+            const ScopedModelview world(CameraModelview(camera, rlGetMatrixModelview()));
+            RenderQueue queue;
+            queue.Submit(Layer::Background, [&] {
+                art::LevelBackdrop(resources, definition.backdrop, definition.world, definition.accent);
+            });
+            queue.Submit(Layer::Middle, [&] {
+                DrawWorld(resources);
+            });
+            SubmitSprites(queue, resources);
+            queue.Submit(Layer::Middle, [&] {
+                DrawWorldFront(resources);
+            });
+            jumpParticles.SubmitSprites(queue, camera.zoom);
+            SubmitPlayer(queue, resources);
+            queue.Flush();
+            if (config.showHitboxes) {
+                collisions.DrawDebug(resources);
+                scriptCollisions.DrawDebug(resources);
+                DrawRectangleLinesEx(player.Bounds(), 1, MAGENTA);
+            }
+        } // Restore the native viewport before ending world clipping.
         EndScissorMode();
+    }
+
+    void Level::DrawUi(const Resources &resources, const GameConfig &config) const {
         DrawPlayerCard(resources, player, config);
         DrawHud(resources);
         dialogue.Draw(resources, {40, 714, 1520, 162}, currentCue.speaker.c_str(), currentCue.fontSize,

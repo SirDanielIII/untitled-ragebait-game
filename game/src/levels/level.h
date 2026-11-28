@@ -94,7 +94,8 @@ namespace rage {
 
         void Update(float dt, const InputFrame &input, const GameConfig &config);
 
-        void Draw(const Resources &resources, const GameConfig &config) const;
+        void DrawScene(const Resources &resources, const GameConfig &config) const;
+        void DrawUi(const Resources &resources, const GameConfig &config) const;
 
         const LevelDefinition &Definition() const { return definition; }
         // Names in the level's sprites file that match no object (typos). The game prints

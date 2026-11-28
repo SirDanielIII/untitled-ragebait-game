@@ -142,8 +142,8 @@ namespace rage {
         DrawHudPanel(panel, accent, fill);
         const char *label = entranceSeconds < entranceHold ? "LATE FOR CLASS!" : "TIME LEFT";
         const float labelSize = 20;
-        const auto labelWidth = resources.MeasureText(label, labelSize).x;
-        resources.DrawText(label, {snap(panel.x + (panel.width - labelWidth) / 2), panel.y + 14}, labelSize, 1, accent);
+        const auto labelWidth = resources.MeasureText(label, labelSize, 1, FontRole::Heading).x;
+        resources.DrawText(label, {snap(panel.x + (panel.width - labelWidth) / 2), panel.y + 14}, labelSize, 1, accent, FontRole::Heading);
 
         float fontSize = std::round(std::lerp(80.0f, 40.0f, eased) / 4) * 4;
         // Negative minutes and long runs still fit inside the corner panel.

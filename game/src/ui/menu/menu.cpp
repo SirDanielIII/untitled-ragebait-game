@@ -91,10 +91,13 @@ namespace rage {
             if (!resources.DrawArt(ArtId::Button, bounds, ArtFit::Stretch)) DrawRectangleRec(bounds, button.fill);
             DrawRectangleLinesEx(bounds, focused ? 3.0f : 1.0f, focused ? theme::mint : theme::border);
             if (focused) DrawRectangle(static_cast<int>(bounds.x), static_cast<int>(bounds.y), 6, static_cast<int>(bounds.height), theme::mint);
-            const float fit = std::min(button.fontSize, button.fontSize * (bounds.width - 30) /
-                                                        std::max(1.0f, resources.MeasureText(button.label.c_str(), button.fontSize, 1).x));
-            const Vector2 size = resources.MeasureText(button.label.c_str(), fit, 1);
-            resources.DrawText(button.label.c_str(), {bounds.x + (bounds.width - size.x) / 2, bounds.y + (bounds.height - size.y) / 2},
+            float fit = button.fontSize;
+            Vector2 size = resources.MeasureText(button.label, fit, 1);
+            while (fit > 10 && size.x > bounds.width - 30) {
+                fit = std::max(10.0f, std::min(fit - 1, std::floor(fit * (bounds.width - 30) / size.x)));
+                size = resources.MeasureText(button.label, fit, 1);
+            }
+            resources.DrawText(button.label, {bounds.x + (bounds.width - size.x) / 2, bounds.y + (bounds.height - size.y) / 2},
                                fit, 1, RAYWHITE);
         }
     }

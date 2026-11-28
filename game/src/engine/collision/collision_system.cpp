@@ -1,4 +1,5 @@
 #include "engine/collision/collision_system.h"
+#include "engine/resources/resources.h"
 
 #include <algorithm>
 #include <cmath>
@@ -202,12 +203,12 @@ namespace rage {
         return events;
     }
 
-    void CollisionSystem::DrawDebug() const {
+    void CollisionSystem::DrawDebug(const Resources &resources) const {
         for (const auto &c : colliders) {
             const Color color = c.type == CollisionType::Hazard ? RED : c.type == CollisionType::Trigger ? YELLOW :
                                 c.type == CollisionType::None ? GRAY : c.type == CollisionType::OneWay ? SKYBLUE : GREEN;
             DrawRectangleLinesEx(c.bounds, 1, color);
-            DrawText(c.id.c_str(), static_cast<int>(c.bounds.x), static_cast<int>(c.bounds.y - 10), 8, color);
+            resources.DrawText(c.id, {c.bounds.x, c.bounds.y - 10}, 8, 1, color);
         }
     }
 }

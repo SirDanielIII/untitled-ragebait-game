@@ -2,35 +2,25 @@
 
 ## Fonts
 
-The UI uses `game/resources/fonts/ARCADEPI.TTF`. Select the runtime font in `game/src/engine/resources/asset_paths.h`:
+The font roles are defined in `game/src/engine/resources/asset_paths.h`: Silkscreen Regular for ordinary text, Silkscreen Bold for headings, and Jersey10-Regular for typewriter dialogue and native settings keycaps. Place the three TTFs (`Silkscreen-Regular.ttf`, `Silkscreen-Bold.ttf`, `Jersey10-Regular.ttf`) in `game/resources/fonts/`. CMake stages runtime resources on every build. Missing or unreadable fonts log a warning and fall back to Raylib's default.
+
+Font bytes are read once. Bitmap glyph atlases are cached by role and physical raster size; layout measurements use resolution-independent logical advances. The world and UI render directly to the native framebuffer, using an aspect-fitted 1600×900 logical viewport. Sprite artwork remains point-filtered and keeps its existing Game Data mapping, pivot, frame, facing and layer.
+
+Use the shared text functions for UI and world labels:
 
 ```cpp
-inline constexpr const char* uiFontPath = "fonts/ARCADEPI.TTF";
-```
-
-Put runtime fonts in `game/resources/fonts/`. CMake stages the complete `game/resources/` directory on every build of the game target. On desktop it goes beside the executable; see Runtime files below for Web builds. Rebuild and relaunch after changing a font.
-
-The custom font loads once at startup into a shared 64-pixel glyph atlas. Drawing and measurement use that same font. There is no per-size font cache.
-
-All drawing uses a fixed 1600 by 900 canvas, scaled to the window with bilinear filtering. Normal window resizing keeps a 16:9 content area without bars; maximized and fullscreen windows allow letterboxing. The final copy preserves the colors already composited in the canvas.
-
-Use the shared text functions for UI:
-
-```cpp
-DrawTextFit(resources, "SETTINGS", {70, 64, 500, 50}, 44, WHITE);
+DrawTextFit(resources, "SETTINGS", {70, 64, 500, 50}, 44, WHITE, FontRole::Heading);
 DrawParagraph(resources, description, {70, 140, 500, 120}, 24, WHITE);
 resources.DrawText("FPS", {1410, 18}, 20, 1, WHITE);
 ```
 
-Positions and sizes above are canvas coordinates. `resources.MeasureText(text, size)` returns dimensions in those same coordinates. For UI clipping, use `resources.BeginClip(bounds)` and `EndScissorMode()`.
-
-Missing or unreadable fonts fall back to Raylib's default font and log a warning. The custom-font loader currently requests printable ASCII; supply an explicit codepoint list to `LoadFontEx` in `engine/resources/resources.cpp` when adding localized text.
+Positions and sizes are logical coordinates. Use `resources.MeasureText` with the same font role and spacing as drawing. For UI clipping, use `resources.BeginClip(bounds)` and `EndScissorMode()`. The font loader's `UiCodepoints()` list includes printable ASCII, Latin-1 and common punctuation; extend it when adding other languages.
 
 ## Exported artwork
 
 Export runtime PNGs under `game/resources/art/`. Desktop builds copy them to the executable's `resources/art/` directory; Web builds preload them with the other runtime files. Paths are defined in `asset_paths.h`; images are loaded at startup.
 
-The table lists optional image slots recognized by the loader. A slot does not require an exported PNG to exist; missing images use the placeholder drawings below. To add a slot, add an entry before `ArtId::Count` and a matching path in `artPaths`, in the same order, in `engine/resources/asset_paths.h`.
+The table lists optional image slots recognized by the loader. A slot does not require an exported PNG to exist; missing images use the defaults below. To add a slot, add an entry before `ArtId::Count` and a matching path in `artPaths`, in the same order, in `engine/resources/asset_paths.h`.
 
 | PNG under `game/resources/art/` | Use | Placement |
 | --- | --- | --- |
@@ -48,7 +38,7 @@ The table lists optional image slots recognized by the loader. A slot does not r
 | `ui/dialogue.png` | Dialogue panel | Panel bounds |
 | `ui/button.png` | Filled button | Button bounds |
 
-Missing textures use the shape drawings in `engine/graphics/placeholder_art.cpp`. `Resources::DrawArt` returns whether an image was drawn so each caller can supply its fallback. Character PNGs should be tightly framed; transparent padding affects the displayed size. A complete menu background replaces its fallback illustration, including the characters in that illustration.
+Missing menu backgrounds use the opaque solid `theme::background` color; other missing textures use the shape drawings in `engine/graphics/placeholder_art.cpp`. `Resources::DrawArt` returns whether an image was drawn so each caller can supply its fallback. Character PNGs should be tightly framed; transparent padding affects the displayed size. For the main menu, export a 16:9 PNG (1600×900 or higher) as `menus/main.png`. It fills the logical viewport behind the title, buttons and description, without any extra illustrated placeholders. The top and right side are reserved for the background artwork.
 
 Keep labels and button text out of background images. Menus draw text, focus outlines and controls separately. Widget drawing is in `ui/`; colors are in `ui/theme.h`.
 

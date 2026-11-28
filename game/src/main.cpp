@@ -87,6 +87,12 @@ namespace rage {
     }
 
     bool Game::Update(float dt, const InputFrame &input) {
+        // Consume the shortcut before any gameplay or menu action (Alt+Enter
+        // must not also confirm a button or skip dialogue).
+        if (input.toggleFullscreen) {
+            SetFullscreenPreference(!config.fullscreen);
+            return false;
+        }
         if (screen == ScreenId::Playing) {
             if (input.pause) {
                 Enter(ScreenId::Paused);
@@ -140,6 +146,9 @@ namespace rage {
             case ActionKind::Restart: if (activeLevel) activeLevel->Reset(config);
                 Enter(ScreenId::Playing);
                 return;
+            case ActionKind::ToggleFullscreen:
+                SetFullscreenPreference(!config.fullscreen);
+                return;
             case ActionKind::ToggleFps: config.showFps = !config.showFps;
                 break;
             case ActionKind::ToggleMute: config.muted = !config.muted;
@@ -175,28 +184,53 @@ namespace rage {
         return activeLevel ? activeLevel->MusicTrack() : std::string(menuMusic);
     }
 
+    void Game::SetFullscreenPreference(bool enabled) {
+        if (config.fullscreen == enabled) return;
+        config.fullscreen = enabled;
+        settingsDirty = true;
+        if (screen == ScreenId::Settings) BuildMenu(true);
+    }
+
     bool Game::TakeSettingsDirty() {
         const bool dirty = settingsDirty;
         settingsDirty = false;
         return dirty;
     }
 
-    void Game::Draw(const Resources &resources, const std::string &settingsStatus) const {
+    void Game::DrawFrame(Resources &resources, Rectangle physical) const {
+        if (physical.width <= 0 || physical.height <= 0) return;
+        resources.BeginFrame();
+        resources.SetViewport(physical);
+        // The viewport replaces Raylib's window-DPI modelview. Physical already
+        // includes DPI, so applying the original window scale again would double it.
+        const ScopedModelview viewport(ViewportMatrix(physical));
+        DrawRectangle(0, 0, canvasWidth, canvasHeight, Color{19, 25, 39, 255});
+        DrawScene(resources);
+        DrawUi(resources);
+        if (config.showFps) resources.DrawText(TextFormat("%d FPS", GetFPS()), {1410, 18}, 20, 1, RAYWHITE);
+    }
+
+    bool Game::HasVisibleWorld() const {
+        return activeLevel && screen == ScreenId::Playing; // Menus have opaque backgrounds.
+    }
+
+    void Game::DrawScene(const Resources &resources) const {
+        if (HasVisibleWorld()) activeLevel->DrawScene(resources, config);
+    }
+
+    void Game::DrawUi(const Resources &resources) const {
         switch (screen) {
             case ScreenId::Playing:
-                if (activeLevel) activeLevel->Draw(resources, config);
+                if (activeLevel) activeLevel->DrawUi(resources, config);
                 return;
             case ScreenId::MainMenu: DrawMainMenu(resources);
                 break;
-            case ScreenId::Settings: DrawSettingsMenu(resources, config, settingsStatus);
+            case ScreenId::Settings: DrawSettingsMenu(resources, config);
                 break;
             case ScreenId::LevelSelect: DrawLevelSelect(resources, menu.Selected());
                 break;
             case ScreenId::Paused:
-                if (activeLevel) {
-                    activeLevel->Draw(resources, config);
-                    DrawPauseMenu(resources, activeLevel->Definition());
-                }
+                if (activeLevel) DrawPauseMenu(resources, activeLevel->Definition());
                 break;
         }
         menu.Draw(resources);

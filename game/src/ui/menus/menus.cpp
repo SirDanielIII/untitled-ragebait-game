@@ -3,12 +3,15 @@
 #include "ui/theme.h"
 #include "ui/text/text.h"
 
+#include <initializer_list>
+#include <string_view>
+
 namespace rage {
     std::vector<MenuItem> MainMenuItems() {
         return {
             Button{"START GAME", {ActionKind::StartLevel, 0}, {84, 438, 540, 82}, {73, 57, 108, 255}, ButtonStyle::Filled, false, 30},
             Button{"SETTINGS", {ActionKind::OpenSettings}, {84, 542, 258, 66}, theme::panel, ButtonStyle::Filled, false, 24},
-            Button{"DEV LEVEL SELECT", {ActionKind::OpenLevels}, {366, 542, 258, 66}, theme::panel, ButtonStyle::Filled, false, 18},
+            Button{"LEVEL SELECT", {ActionKind::OpenLevels}, {366, 542, 258, 66}, theme::panel, ButtonStyle::Filled, false, 18},
             Button{"QUIT", {ActionKind::Quit}, {84, 630, 540, 60}, {57, 32, 47, 255}, ButtonStyle::Filled, false, 22}
         };
     }
@@ -16,23 +19,10 @@ namespace rage {
     void DrawMainMenu(const Resources &resources) {
         using namespace theme;
         art::MenuBackdrop(resources, ArtId::MainMenu);
-        DrawRectangle(84, 77, 8, 26, danger);
-        DrawTextFit(resources, "MAIN MENU", {110, 80, 535, 26}, 23, gold);
-        DrawTextFit(resources, "UNTITLED", {80, 149, 555, 78}, 68, paper);
-        DrawTextFit(resources, "RAGEBAIT", {80, 227, 555, 78}, 68, mint);
-        DrawTextFit(resources, "GAME", {84, 307, 540, 57}, 50, paper);
+        DrawTextFit(resources, "UNTITLED", {80, 149, 555, 78}, 68, paper, FontRole::Heading);
+        DrawTextFit(resources, "RAGEBAIT", {80, 227, 555, 78}, 68, mint, FontRole::Heading);
+        DrawTextFit(resources, "GAME", {84, 307, 540, 57}, 50, paper, FontRole::Heading);
         DrawParagraph(resources, "A platformer about a student on the way to class.", {86, 378, 530, 52}, 22, muted);
-        DrawTextFit(resources, "FOUR LEVELS", {730, 74, 780, 25}, 20, muted);
-        DrawTextFit(resources, "GET FROM HOME TO THE LECTURE HALL.", {745, 650, 745, 24}, 18, gold);
-
-        DrawRectangleRec({710, 704, 810, 128}, panel);
-        DrawRectangleRec({710, 704, 4, 128}, danger);
-        DrawTextFit(resources, "ABOUT THE GAME", {736, 722, 740, 24}, 21, mint);
-        DrawParagraph(resources, "Navigate obstacles with help from the Entity,\nan unreliable narrator.", {736, 758, 750, 64}, 23, paper);
-        DrawTextFit(resources, "A/D: MOVE   SPACE: JUMP   ESC: PAUSE", {86, 750, 535, 24}, 19, muted);
-        DrawTextFit(resources, "ARROWS / MOUSE TO SELECT. ENTER TO CHOOSE.", {86, 791, 535, 23}, 17, muted);
-        DrawTextFit(resources, "CISC 320 / GROUP 7", {86, 856, 535, 20}, 17, muted);
-        DrawTextFit(resources, "HOUSE  >  STREETS  >  STAIRWELL  >  CLASS", {710, 856, 810, 23}, 18, muted);
     }
 
     std::vector<MenuItem> LevelSelectItems() {
@@ -49,16 +39,16 @@ namespace rage {
     void DrawLevelSelect(const Resources &resources, int selected) {
         using namespace theme;
         art::MenuBackdrop(resources, ArtId::StageSelect);
-        DrawTextFit(resources, "DEV LEVEL SELECT", {84, 70, 1380, 60}, 48, paper);
+        DrawTextFit(resources, "LEVEL SELECT", {84, 70, 1380, 60}, 48, paper, FontRole::Heading);
         DrawTextFit(resources, "Open any level directly for development and testing.", {86, 150, 1400, 30}, 23, muted);
         DrawRectangleRec({790, 252, 730, 496}, panel);
         if (selected >= 0 && selected < static_cast<int>(LevelCatalog().size())) {
             const auto &level = LevelCatalog()[selected];
             DrawRectangleRec({790, 252, 730, 4}, level.accent);
-            DrawTextFit(resources, "SELECTED LEVEL", {824, 280, 650, 24}, 21, gold);
-            DrawTextFit(resources, level.title, {824, 328, 650, 42}, 32, paper);
+            DrawTextFit(resources, "SELECTED LEVEL", {824, 280, 650, 24}, 21, gold, FontRole::Heading);
+            DrawTextFit(resources, level.title, {824, 328, 650, 42}, 32, paper, FontRole::Heading);
             DrawParagraph(resources, level.description, {824, 400, 650, 96}, 25, muted);
-            DrawTextFit(resources, "DEVELOPMENT NOTES", {824, 528, 650, 25}, 21, mint);
+            DrawTextFit(resources, "DEVELOPMENT NOTES", {824, 528, 650, 25}, 21, mint, FontRole::Heading);
             DrawParagraph(resources, level.plannedContent, {824, 576, 650, 138}, 22, paper);
         } else {
             art::Entity(resources, {1050, 310, 180, 230});
@@ -70,23 +60,87 @@ namespace rage {
     std::vector<MenuItem> PauseMenuItems() {
         return {
             Button{"RESUME", {ActionKind::Resume}, {84, 252, 630, 70}, {73, 57, 108, 255}},
-            Button{"RESTART STAGE", {ActionKind::Restart}, {84, 346, 630, 70}, theme::panel},
+            Button{"RESTART", {ActionKind::Restart}, {84, 346, 630, 70}, theme::panel},
             Button{"SETTINGS", {ActionKind::OpenSettings}, {84, 440, 630, 70}, theme::panel},
-            Button{"DEV LEVEL SELECT", {ActionKind::OpenLevels}, {84, 534, 630, 70}, theme::panel},
+            Button{"LEVEL SELECT", {ActionKind::OpenLevels}, {84, 534, 630, 70}, theme::panel},
             Button{"MAIN MENU", {ActionKind::MainMenu}, {84, 628, 630, 70}, {57, 32, 47, 255}}
         };
     }
 
     void DrawPauseMenu(const Resources &resources, const LevelDefinition &level) {
         using namespace theme;
-        if (!resources.DrawArt(ArtId::Pause, {0, 0, 1600, 900}, ArtFit::Stretch))
-            DrawRectangle(0, 0, 1600, 900, {17, 17, 27, 242});
-        DrawTextFit(resources, "PAUSED", {84, 70, 1400, 60}, 48, paper);
-        DrawTextFit(resources, level.title, {86, 150, 1400, 30}, 24, muted);
+        art::MenuBackdrop(resources, ArtId::Pause);
+        DrawTextFit(resources, "PAUSED", {84, 70, 1400, 60}, 48, paper, FontRole::Heading);
+        DrawTextFit(resources, level.title, {86, 150, 1400, 30}, 24, muted, FontRole::Heading);
         art::Entity(resources, {1030, 245, 200, 245});
-        DrawTextFit(resources, "GAME PAUSED", {840, 552, 650, 26}, 22, mint);
+        DrawTextFit(resources, "GAME PAUSED", {840, 552, 650, 26}, 22, mint, FontRole::Heading);
         DrawParagraph(resources, "Resume playing, restart this level,\nor return to the main menu.", {840, 603, 640, 112}, 25, paper);
         DrawTextFit(resources, "PAUSED / ESC TO RETURN", {84, 845, 1430, 28}, 21, muted);
+    }
+
+    namespace {
+        constexpr float settingsPanelX = 75;
+        constexpr float settingsPanelY = 214;
+        constexpr float settingsPanelWidth = 460;
+        constexpr float settingsPanelHeight = 626;
+        constexpr float settingsPanelStep = 495;
+        constexpr float displayX = settingsPanelX + 35;
+        constexpr float audioX = displayX + settingsPanelStep;
+        constexpr float controlsX = displayX + 2 * settingsPanelStep;
+
+        // Native vector keycaps; their Jersey10 glyphs use actual ink bounds
+        // for centering, rather than the font's advance box or baseline.
+        void DrawKeycap(const Resources &resources, std::string_view key, Rectangle bounds) {
+            DrawRectangleRec(bounds, theme::background);
+            DrawRectangleLinesEx(bounds, 1.5f, theme::border);
+            constexpr auto role = FontRole::Typewriter;
+            float size = 20;
+            while (size > 10 && resources.MeasureText(key, size, 1, role).x > bounds.width - 8)
+                size -= 1;
+            resources.DrawCenteredText(key, bounds, size, 1, theme::paper, role);
+        }
+
+        constexpr float KeycapWidth(std::string_view key) {
+            return key.size() <= 1 ? 30 : 22 + 9 * static_cast<float>(key.size());
+        }
+
+        void DrawControlRow(const Resources &resources, float y, std::string_view action,
+                            std::initializer_list<std::string_view> keys) {
+            // Right-align native keycaps. '+' and '/' are separators, not keys.
+            float total = 0;
+            for (auto key : keys) total += (key == "+" || key == "/" ? 12 : KeycapWidth(key)) + 4;
+            float x = controlsX + 390 - total + 4;
+            DrawTextFit(resources, action, {controlsX, y + 8, x - controlsX - 10, 23}, 18, theme::muted);
+            for (auto key : keys) {
+                const bool separator = key == "+" || key == "/";
+                const float width = separator ? 12 : KeycapWidth(key);
+                if (separator) resources.DrawCenteredText(key, {x, y, width, 34}, 17, 1, theme::muted, FontRole::Typewriter);
+                else DrawKeycap(resources, key, {x, y, width, 34});
+                x += width + 4;
+            }
+        }
+
+        void DrawControls(const Resources &resources) {
+            float y = 283;
+            const auto row = [&](std::string_view action, std::initializer_list<std::string_view> keys) {
+                DrawControlRow(resources, y, action, keys);
+                y += 44;
+            };
+            row("MOVE", {"A", "D", "/", "LEFT", "RIGHT"});
+            row("JUMP", {"SPACE", "W", "UP"});
+            row("CROUCH", {"S", "DOWN"});
+            row("CLIMB", {"W", "UP"});
+            row("PAUSE", {"ESC", "P"});
+            row("SKIP DIALOGUE", {"ENTER"});
+            row("REPLAY DIALOGUE", {"T"});
+            row("RESET PLAYER", {"R"});
+            row("MENU NAV", {"W", "S", "UP", "DOWN", "TAB"});
+            row("MENU CONFIRM", {"ENTER"});
+            row("MENU BACK", {"ESC", "BKSP"});
+#if !defined(PLATFORM_WEB)
+            row("FULLSCREEN", {"ALT", "+", "ENTER", "/", "F11"});
+#endif
+        }
     }
 
     std::vector<MenuItem> SettingsMenuItems(const GameConfig &config) {
@@ -95,46 +149,42 @@ namespace rage {
             Button{"BACK", {ActionKind::Back}, {70, 64, 150, 54}, panel, ButtonStyle::Filled, false, 24},
             SliderItem{
                 "FRAME RATE CAP", ActionKind::SetTargetFps,
-                Slider({110, 385, 390, 52}, minTargetFps, maxTargetFps, 1, static_cast<float>(config.targetFps)), " FPS", 1, {}
+                Slider({displayX, 385, 390, 52}, minTargetFps, maxTargetFps, 1, static_cast<float>(config.targetFps)), " FPS", 1, {}
             },
-            Button{"UNLIMITED FPS", {ActionKind::ToggleUnlimitedFps}, {110, 484, 390, 54}, mint, ButtonStyle::Checkbox, config.unlimitedFps, 25},
-            Button{"SHOW FPS", {ActionKind::ToggleFps}, {110, 564, 390, 54}, mint, ButtonStyle::Checkbox, config.showFps, 25},
-            // The Audio column takes the former dialogue column; the checkbox sits in the header row
-            // so three sliders fit below it. The right column is reserved for the controls list.
-            Button{"AUDIO ENABLED", {ActionKind::ToggleMute}, {605, 236, 390, 54}, mint, ButtonStyle::Checkbox, !config.muted, 25},
+            Button{"UNLIMITED FPS", {ActionKind::ToggleUnlimitedFps}, {displayX, 484, 390, 54}, mint, ButtonStyle::Checkbox, config.unlimitedFps, 25},
+            Button{"SHOW FPS", {ActionKind::ToggleFps}, {displayX, 564, 390, 54}, mint, ButtonStyle::Checkbox, config.showFps, 25},
+#if !defined(PLATFORM_WEB)
+            Button{"FULLSCREEN", {ActionKind::ToggleFullscreen}, {displayX, 644, 390, 54}, mint, ButtonStyle::Checkbox, config.fullscreen, 25},
+#endif
+            // The audio checkbox doubles as the column heading.
+            Button{"AUDIO ENABLED", {ActionKind::ToggleMute}, {audioX, 236, 390, 54}, mint, ButtonStyle::Checkbox, !config.muted, 25},
             SliderItem{
                 "MASTER VOLUME", ActionKind::SetVolume,
-                Slider({605, 388, 390, 52}, 0, 1, 0.01f, config.masterVolume), "%", 100, {}
+                Slider({audioX, 388, 390, 52}, 0, 1, 0.01f, config.masterVolume), "%", 100, {}
             },
             SliderItem{
                 "MUSIC", ActionKind::SetMusicVolume,
-                Slider({605, 538, 390, 52}, 0, 1, 0.01f, config.musicVolume), "%", 100, {}
+                Slider({audioX, 538, 390, 52}, 0, 1, 0.01f, config.musicVolume), "%", 100, {}
             },
             SliderItem{
                 "SOUND EFFECTS", ActionKind::SetSfxVolume,
-                Slider({605, 688, 390, 52}, 0, 1, 0.01f, config.sfxVolume), "%", 100, {}
+                Slider({audioX, 688, 390, 52}, 0, 1, 0.01f, config.sfxVolume), "%", 100, {}
             }
         };
     }
 
-    void DrawSettingsMenu(const Resources &resources, const GameConfig &config, const std::string &status) {
+    void DrawSettingsMenu(const Resources &resources, const GameConfig &) {
         using namespace theme;
         art::MenuBackdrop(resources, ArtId::Settings);
-        DrawTextFit(resources, "SETTINGS", {270, 65, 1200, 44}, 44, paper);
-        DrawTextFit(resources, "Adjust display and audio settings.", {272, 123, 1200, 23}, 23, muted);
+        DrawTextFit(resources, "SETTINGS", {270, 65, 1200, 44}, 44, paper, FontRole::Heading);
+        DrawTextFit(resources, "Display, audio and controls.", {272, 123, 1200, 23}, 23, muted);
         for (int i = 0; i < 3; ++i) {
-            const float x = 70.0f + i * 495;
-            DrawRectangleRec({x, 214, 460, 540}, panel);
-            DrawRectangleRec({x, 214, 460, 4}, i == 1 ? gold : mint);
-            // The display column gets a heading; the audio column's "AUDIO ENABLED" checkbox
-            // doubles as its heading, and the right column is reserved for the controls list.
-            if (i == 0) DrawTextFit(resources, "DISPLAY", {x + 40, 246, 390, 24}, 24, muted);
+            const float x = settingsPanelX + i * settingsPanelStep;
+            DrawRectangleRec({x, settingsPanelY, settingsPanelWidth, settingsPanelHeight}, panel);
+            DrawRectangleRec({x, settingsPanelY, settingsPanelWidth, 4}, i == 1 ? gold : mint);
+            if (i == 0 || i == 2)
+                DrawTextFit(resources, i == 0 ? "DISPLAY" : "CONTROLS", {x + 35, 246, 390, 24}, 24, muted, FontRole::Heading);
         }
-        DrawTextFit(resources, config.unlimitedFps ? "ACTIVE: UNLIMITED" : "ACTIVE: CAPPED", {110, 653, 390, 22}, 22, mint);
-        DrawTextFit(resources, "Unlimited bypasses the saved cap.", {110, 682, 390, 19}, 19, muted);
-        DrawTextFit(resources, status.c_str(), {74, 764, 1200, 22}, 22, mint);
-        DrawLine(70, 819, 1530, 819, border);
-        DrawTextFit(resources, "DRAG / LEFT / RIGHT: ADJUST   UP / DOWN / TAB: SELECT   HOME / END: LIMITS   ESC: BACK",
-                    {74, 849, 1450, 24}, 19, muted);
+        DrawControls(resources);
     }
 }

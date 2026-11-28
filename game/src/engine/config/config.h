@@ -14,6 +14,7 @@ namespace rage {
         int targetFps = 60;
         bool unlimitedFps = false;
         bool showFps = false;
+        bool fullscreen = false;
         float masterVolume = 0.5f;
         bool muted = false;
         float musicVolume = 0.8f; // Music slider; multiplied by the master volume.

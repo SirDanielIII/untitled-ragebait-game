@@ -19,7 +19,7 @@ The `LevelDefinition` at the top of each file contains the title, description, i
 
 ## Loading and switching levels
 
-Open **Dev Level Select** from the main or pause menu to load a stage directly for testing. Its preview includes the stage's `.plannedContent` development notes.
+Open **Level Select** from the main or pause menu to load a stage directly for testing. Its preview includes the stage's `.plannedContent` development notes.
 
 `ui/menus/menus.cpp` creates buttons that send a `StartLevel` action with the chosen `LevelId`. `Game::Apply` in `main.cpp` handles that action: it calls `CreateLevel`, replaces the active scene, and enters the Playing screen. `CreateLevel` in `main.cpp` constructs the registered stage class and calls `Reset`.
 
@@ -129,7 +129,7 @@ void OnUpdate(float dt, const InputFrame& input) override
 | `RespawnPoint()` | Last checkpoint position, or the spawn |
 | `Definition()` | Read the authored level data |
 
-The update order is dialogue, object movement, player movement, hazard and trigger checks, `OnUpdate`, event evaluation, then camera follow. Pause and Settings suspend scene updates. Restart Stage and R clear event completion and pending notifications, restore the player, elapsed time and opening dialogue, reset all objects, then call `OnReset` and update the camera. Clear stage-specific state in `OnReset`. Opening Main Menu or Dev Level Select destroys the active level, its objects and its events.
+The update order is dialogue, object movement, player movement, hazard and trigger checks, `OnUpdate`, event evaluation, then camera follow. Pause and Settings suspend scene updates. Restart and R clear event completion and pending notifications, restore the player, elapsed time and opening dialogue, reset all objects, then call `OnReset` and update the camera. Clear stage-specific state in `OnReset`. Opening Main Menu or Level Select destroys the active level, its objects and its events.
 
 Keep update logic out of drawing functions. Use the application's existing frame loop rather than adding a loop inside a stage.
 
@@ -247,7 +247,7 @@ Basic hazards (respawn at the last checkpoint), checkpoints and stage completion
 
 Menu layouts are in `ui/menus/menus.cpp`. Shared controls are in `ui/`; navigation and settings actions are handled by `main.cpp`.
 
-Use `DrawTextFit(resources, ...)`, `DrawParagraph(resources, ...)` or `resources.DrawText(...)` for UI text. They use the shared font on the fixed 1600 by 900 canvas. Use `resources.BeginClip(...)` for a clip rectangle in canvas coordinates.
+Use `DrawTextFit(resources, ...)`, `DrawParagraph(resources, ...)` or `resources.DrawText(...)` for UI text. They use the native-resolution font cache with a 1600×900 logical viewport. Use `resources.BeginClip(...)` for a clip rectangle in canvas coordinates.
 
 Font selection, PNG paths and resource copying are covered in [ART_ASSETS.md](ART_ASSETS.md).
 
