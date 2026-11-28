@@ -76,7 +76,7 @@ namespace rage {
                 .id = "pig-warning",
                 .condition = [this] { return GetPlayer().Position().x >= 4710.0f && GetPlayer().Position().x < 6610.0f && CanSay(); },
                 .execute = [this] {
-                    Say({.text = "Hold S to duck low pigs. Those green farts are lethal.\n"
+                    Say({.text = "Hold S or Shift to duck low pigs. Those green farts are lethal.\n"
                                  "Boxed in? Wait on a cloud and let the herd pass.",
                          .effects = {.holdSeconds = 3.0f, .fadeSeconds = 1.0f}});
                 }

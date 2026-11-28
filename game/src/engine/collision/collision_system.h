@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace rage {
+    class Resources;
     enum class CollisionType { None, Solid, Hazard, Trigger, OneWay };
     namespace collisionLayers {
         inline constexpr std::uint32_t player = 1, environment = 2, all = ~0u;
@@ -23,6 +24,14 @@ namespace rage {
         Rectangle previous{};
         CollisionType type = CollisionType::Solid;
         CollisionFilter filter{collisionLayers::environment, collisionLayers::all};
+        // Some non-blocking contacts (birds) are physical obstacles, unlike ordinary triggers.
+        bool obstacleSensor = false;
+
+        bool IsDebugObstacle() const {
+            return bounds.width > 0 && bounds.height > 0 &&
+                   (type == CollisionType::Solid || type == CollisionType::OneWay ||
+                    type == CollisionType::Hazard || (type == CollisionType::Trigger && obstacleSensor));
+        }
     };
     struct CollisionContact {
         std::string objectId;
@@ -57,7 +66,7 @@ namespace rage {
         std::vector<CollisionEvent> TrackContacts(const std::string &bodyId,
                                                 const std::vector<CollisionContact> &contacts);
         void Reset() { contactsByBody.clear(); colliders.clear(); }
-        void DrawDebug() const;
+        void DrawDebug(const Resources &resources) const;
         static bool Overlaps(Rectangle a, Rectangle b);
         static bool TouchesDuringMove(Rectangle from, Rectangle to, Rectangle otherFrom, Rectangle otherTo);
 

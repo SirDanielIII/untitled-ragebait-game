@@ -26,7 +26,7 @@ namespace rage {
     {
         DrawHudPanel({24, 24, 324, 140}, theme::border, theme::paper);
         DrawRectangle(28, 28, 316, 28, theme::mint);
-        resources.DrawText("STUDENT ID", {40, 32}, 20, 1, theme::background);
+        resources.DrawText("STUDENT ID", {40, 32}, 20, 1, theme::background, FontRole::Heading);
         // A tiny punched slot and a photo make this read as a campus ID.
         DrawRectangle(304, 36, 24, 8, theme::border);
         DrawRectangle(40, 68, 60, 80, theme::border);

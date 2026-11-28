@@ -128,11 +128,12 @@ namespace rage {
         UpdateCamera();
     }
 
-    bool Level::ScriptContact(const std::string &id, Rectangle bounds, CollisionType type, bool enabled) {
+    bool Level::ScriptContact(const std::string &id, Rectangle bounds, CollisionType type, bool enabled, bool obstacleSensor) {
         auto previous = bounds;
         if (const auto old = scriptBounds.find(id); old != scriptBounds.end() && old->second.type != CollisionType::None)
             previous = old->second.bounds;
-        scriptShapes.push_back({id, bounds, previous, enabled ? type : CollisionType::None});
+        scriptShapes.push_back({.id = id, .bounds = bounds, .previous = previous,
+                                .type = enabled ? type : CollisionType::None, .obstacleSensor = obstacleSensor});
         if (!enabled || !CollisionSystem::TouchesDuringMove(scriptPlayerFrom, player.Bounds(), previous, bounds)) return false;
         scriptContacts.push_back({id, type});
         const bool entered = std::ranges::none_of(previousScriptContacts, [&](const auto &c) { return c.objectId == id; });
@@ -181,7 +182,7 @@ namespace rage {
     }
 
     void Level::RefreshColliders() {
-        auto scene = objects.Colliders();
+        auto scene = objects.Colliders(4); // Room for the optional world boundaries.
         const auto w = definition.world;
         const auto add = [&](const char *id, Rectangle bounds, CollisionType type) {
             scene.push_back({id, bounds, bounds, type});
@@ -422,31 +423,34 @@ namespace rage {
         });
     }
 
-    void Level::Draw(const Resources &resources, const GameConfig &config) const {
+    void Level::DrawScene(const Resources &resources, const GameConfig &config) const {
         resources.BeginClip(worldViewport);
         DrawRectangleRec(worldViewport, Color{36, 44, 60, 255});
-        BeginMode2D(camera);
-        RenderQueue queue;
-        queue.Submit(Layer::Background, [&] {
-            art::LevelBackdrop(resources, definition.backdrop, definition.world, definition.accent);
-        });
-        queue.Submit(Layer::Middle, [&] {
-            DrawWorld(resources);
-        });
-        SubmitSprites(queue, resources);
-        queue.Submit(Layer::Middle, [&] {
-            DrawWorldFront(resources);
-        });
-        jumpParticles.SubmitSprites(queue, camera.zoom);
-        SubmitPlayer(queue, resources);
-        queue.Flush();
-        if (config.showHitboxes) {
-            collisions.DrawDebug();
-            scriptCollisions.DrawDebug();
-            DrawRectangleLinesEx(player.Bounds(), 1, MAGENTA);
-        }
-        EndMode2D();
+        {
+            const ScopedModelview world(CameraModelview(camera, rlGetMatrixModelview()));
+            auto &queue = renderQueue;
+            queue.Submit(Layer::Background, [&] {
+                art::LevelBackdrop(resources, definition.backdrop, definition.world, definition.accent);
+            });
+            queue.Submit(Layer::Middle, [&] {
+                DrawWorld(resources);
+            });
+            SubmitSprites(queue, resources);
+            queue.Submit(Layer::Middle, [&] {
+                DrawWorldFront(resources);
+            });
+            jumpParticles.SubmitSprites(queue, camera.zoom);
+            SubmitPlayer(queue, resources);
+            queue.Flush();
+            if (config.showHitboxes) {
+                collisions.DrawDebug(resources);
+                scriptCollisions.DrawDebug(resources);
+            }
+        } // Restore the native viewport before ending world clipping.
         EndScissorMode();
+    }
+
+    void Level::DrawUi(const Resources &resources, const GameConfig &config) const {
         DrawPlayerCard(resources, player, config);
         DrawHud(resources);
         dialogue.Draw(resources, {40, 714, 1520, 162}, currentCue.speaker.c_str(), currentCue.fontSize,

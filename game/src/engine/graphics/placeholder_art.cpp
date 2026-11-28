@@ -1,6 +1,7 @@
 #include "engine/graphics/placeholder_art.h"
 #include "ui/theme.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace rage::art {
@@ -59,11 +60,11 @@ namespace rage::art {
         if (backdrop == ArtId::Level0) {
             for (int x = 80; x < world.width; x += 280) {
                 DrawRectangle(x, 120, 145, 180, {44, 43, 65, 255});
-                DrawRectangleLines(x, 120, 145, 180, theme::border);
-                DrawLine(x + 72, 120, x + 72, 300, theme::border);
+                DrawRectangleLinesEx({static_cast<float>(x), 120, 145, 180}, 1.0f, theme::border);
+                DrawLineEx({static_cast<float>(x + 72), 120}, {static_cast<float>(x + 72), 300}, 1.0f, theme::border);
             }
             DrawRectangle(1260, 410, 110, 240, theme::background);
-            DrawRectangleLines(1260, 410, 110, 240, accent);
+            DrawRectangleLinesEx({1260, 410, 110, 240}, 1.0f, accent);
         } else if (backdrop == ArtId::Level1) {
             for (int x = 0; x < world.width; x += 220) {
                 const int height = 160 + (x % 3) * 70;
@@ -74,45 +75,37 @@ namespace rage::art {
         } else if (backdrop == ArtId::Level2) {
             for (int y = 70; y < world.height; y += 180) {
                 DrawRectangle(80, y, 840, 5, theme::border);
-                DrawRectangleLines(410, y + 35, 180, 90, theme::border);
+                DrawRectangleLinesEx({410, static_cast<float>(y + 35), 180, 90}, 1.0f, theme::border);
             }
         } else {
             DrawRectangle(1200, 300, 280, 350, {52, 49, 65, 255});
-            DrawRectangleLines(1200, 300, 280, 350, accent);
+            DrawRectangleLinesEx({1200, 300, 280, 350}, 1.0f, accent);
             DrawRectangle(1300, 530, 70, 120, theme::background);
             Entity(resources, {1020, 420, 140, 180});
         }
     }
 
-    void MenuBackdrop(const Resources &resources, ArtId screen) {
-        ClearBackground(theme::background);
-        if (resources.DrawArt(screen, {0, 0, 1600, 900}, ArtFit::Stretch)) return;
-        // A quiet, off-kilter room. Exported menu backgrounds replace this whole layer.
-        for (int y = 0; y < 900; y += 64) DrawLine(0, y, 1600, y, {23, 22, 35, 255});
-        DrawCircleGradient({1350, 160}, 320, {55, 43, 77, 255}, theme::background);
-        if (screen != ArtId::MainMenu) return;
-        DrawRectangle(710, 110, 810, 560, {27, 26, 43, 255});
-        DrawRectangleLinesEx({710, 110, 810, 560}, 2, theme::border);
-        DrawRectangle(745, 460, 190, 170, {46, 39, 57, 255});
-        DrawTriangle({728, 460}, {950, 460}, {838, 371}, {60, 44, 69, 255});
-        DrawRectangle(810, 535, 54, 95, theme::background);
-        DrawRectangleLines(810, 535, 54, 95, theme::gold);
-        DrawRectangle(870, 492, 34, 42, theme::gold);
-        // Missing stairs drift toward a classroom door.
-        for (int i = 0; i < 6; ++i)
-            DrawRectangle(942 + i * 70, 580 - i * 42, 85, 14, {107, 91, 137, 255});
-        DrawRectangle(1360, 245, 98, 160, theme::background);
-        DrawRectangleLines(1360, 245, 98, 160, theme::mint);
-        DrawCircle(1438, 330, 4, theme::gold);
-        DrawRectangle(735, 630, 760, 8, theme::border);
-        // Hallucinated clouds, loose masonry and a paper airplane.
-        DrawEllipse(1040, 275, 62, 16, {80, 65, 103, 255});
-        DrawEllipse(1100, 245, 48, 14, {93, 76, 116, 255});
-        DrawRectanglePro({1290, 180, 58, 22}, {0, 0}, -18, theme::border);
-        DrawTriangle({1440, 480}, {1470, 497}, {1510, 457}, theme::paper);
-        DrawLine(1470, 497, 1485, 478, theme::mint);
-        Entity(resources, {1150, 115, 170, 230});
-        Student(resources, {920, 503, 66, 115});
+    bool DrawMenuArt(const Resources &resources, std::string_view assetId, Rectangle bounds) {
+        const auto &assets = resources.Assets();
+        const auto *image = assets.Find(assetId, "idle");
+        if (!image || !assets.HasTexture(*image)) return false;
+        // UI art may be much larger than its logical slot. Unlike world-sprite
+        // FitScale, this must allow fractional downscaling to keep it inside.
+        const float scale = std::min(bounds.width / image->frameWidth, bounds.height / image->frameHeight);
+        const float width = image->frameWidth * scale;
+        const float height = image->frameHeight * scale;
+        float pivotX = 0, pivotY = 0;
+        PivotOffset(image->pivot, width, height, pivotX, pivotY);
+        const Vector2 position{bounds.x + (bounds.width - width) / 2 + pivotX,
+                               bounds.y + (bounds.height - height) / 2 + pivotY};
+        return assets.Draw(*image, 0, position, Facing::None, {}, scale) == DrawResult::Texture;
+    }
+
+    void MenuBackdrop(const Resources &resources, std::string_view assetId) {
+        // ClearBackground would also erase the native framebuffer letterbox.
+        // Opaque solid color is the default for every menu. Optional artwork
+        // sits behind the UI; transparent areas retain the same solid color.
+        DrawRectangle(0, 0, canvasWidth, canvasHeight, theme::background);
+        DrawMenuArt(resources, assetId, {0, 0, canvasWidth, canvasHeight});
     }
 }
-

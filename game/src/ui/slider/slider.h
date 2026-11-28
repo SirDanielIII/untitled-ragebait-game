@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/input/input.h"
+#include "ui/theme.h"
 
 namespace rage {
     // A value widget with no knowledge of configuration, audio or dialogue.
@@ -10,7 +11,7 @@ namespace rage {
 
         bool Update(const InputFrame &input, bool focused);
 
-        void Draw(bool focused) const;
+        void Draw(bool focused, Color highlight = theme::mint) const;
 
         void SetValue(float value);
 

@@ -141,6 +141,8 @@ namespace rage {
             else if (fullKey == "window.target_fps") accepted = Number(value, values.targetFps);
             else if (fullKey == "window.unlimited_fps") accepted = Boolean(value, values.unlimitedFps);
             else if (fullKey == "window.show_fps") accepted = Boolean(value, values.showFps);
+            else if (fullKey == "window.fullscreen") accepted = Boolean(value, values.fullscreen);
+            else if (fullKey == "window.rendering_mode") accepted = true; // Ignore legacy preference; native is unconditional.
             else if (fullKey == "audio.master_volume") accepted = Volume(value, values.masterVolume);
             else if (fullKey == "audio.muted") accepted = Boolean(value, values.muted);
             else if (fullKey == "audio.music_volume") accepted = Volume(value, values.musicVolume);
@@ -181,6 +183,7 @@ namespace rage {
             file << "# Player preferences\nwindow:\n  width: " << values.windowWidth << "\n  height: " << values.windowHeight
                  << "\n  target_fps: " << values.targetFps << "\n  unlimited_fps: " << (values.unlimitedFps ? "true" : "false")
                  << "\n  show_fps: " << (values.showFps ? "true" : "false")
+                 << "\n  fullscreen: " << (values.fullscreen ? "true" : "false")
                  << "\naudio:\n  master_volume: " << std::clamp(values.masterVolume, 0.0f, 1.0f)
                  << "\n  muted: " << (values.muted ? "true" : "false")
                  << "\n  music_volume: " << std::clamp(values.musicVolume, 0.0f, 1.0f)

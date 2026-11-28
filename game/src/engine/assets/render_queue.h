@@ -5,7 +5,7 @@
 // That way a level can submit a foreground bush before the player and the bush still
 // ends up in front.
 //
-// Level::Draw makes one queue per frame. Levels add their sprites in SubmitSprites():
+// Level::DrawScene reuses its queue each frame. Levels add their sprites in SubmitSprites():
 //   queue.Submit(assets, *desk, 0, {600, 650});   // a Game Data sprite, on its sheet layer
 //   queue.Submit(Layer::Foreground, [] { DrawRectangle(0, 0, 50, 50, RED); }); // any drawing
 //

@@ -59,7 +59,7 @@ namespace rage {
 
     using TextMeasure = std::function<float(std::string_view)>;
 
-    std::vector<TextLine> WrapText(const std::string &text, float width, const TextMeasure &measure);
+    std::vector<TextLine> WrapText(std::string_view text, float width, const TextMeasure &measure);
 
     class DialogueBox {
     public:

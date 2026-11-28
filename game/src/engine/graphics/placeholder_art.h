@@ -2,8 +2,12 @@
 #include "engine/resources/resources.h"
 
 namespace rage::art {
-    // Each function tries its named art slot, then draws a temporary shape fallback.
-    void MenuBackdrop(const Resources &resources, ArtId screen);
+    // Optional menu image over an opaque solid-color background.
+    void MenuBackdrop(const Resources &resources, std::string_view assetId);
+
+    // Draw a CSV-defined static menu image, contained in the logical slot.
+    // Missing rows/textures return false without drawing a debug placeholder.
+    bool DrawMenuArt(const Resources &resources, std::string_view assetId, Rectangle bounds);
 
     void Student(const Resources &resources, Rectangle bounds);
 

@@ -10,4 +10,9 @@ namespace rage::theme {
     inline constexpr Color mint{181, 161, 245, 255};
     inline constexpr Color gold{241, 174, 136, 255};
     inline constexpr Color danger{218, 99, 118, 255};
+    // Menu accents: distinct roles, shared across screens and widgets.
+    inline constexpr Color menuPlay{108, 181, 170, 255};
+    inline constexpr Color menuDisplay{119, 167, 209, 255};
+    inline constexpr Color menuLevels{177, 143, 210, 255};
+    inline constexpr Color menuAudio{241, 174, 136, 255};
 }

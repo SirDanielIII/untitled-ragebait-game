@@ -118,17 +118,18 @@ void TestCrouchJumps() {
     std::cout << "PASS: ground-only crouching, crouch-jump takeoffs, stamina, landing and pixel particle lifetime\n";
 }
 
-void TestJumpParticleRendering(const Resources &resources) {
+void TestJumpParticleRendering() {
     JumpParticles particles;
     particles.Emit({100, 100});
     RenderQueue queue;
     particles.SubmitSprites(queue, 1);
     Check(queue.Size() == particles.Count(), "Particle renderer did not queue the burst");
-    BeginTextureMode(resources.Canvas());
+    const test::TestRenderTarget target;
+    BeginTextureMode(target.target);
     ClearBackground(BLACK);
     queue.Flush();
     EndTextureMode();
-    Image rendered = LoadImageFromTexture(resources.Canvas().texture);
+    Image rendered = LoadImageFromTexture(target.target.texture);
     ImageFlipVertical(&rendered);
     // The innermost square is 2x2, snapped to the art grid, with sharp edges.
     const Color square = GetImageColor(rendered, 98, 98);

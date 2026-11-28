@@ -4,13 +4,13 @@
 
 Each numbered level has a folder under `game/src/levels/`, containing its layout, dialogue and gameplay code.
 
-The four current levels provide placeholder platforms, movement, camera follow and opening dialogue. Level 0 also includes a scripted hallway sequence. The objectives below describe the intended content; reaching a door or classroom does not currently complete a level.
+Level 0 and Level 3 have preliminary layouts. Level 1 has a playable street-to-campus route with scripted hazards and an exit into Level 2; Level 2 has a vertical platforming/climbing route and swooping birds. All levels share movement, camera follow, opening dialogue and collision systems. The objectives below describe the intended narrative, not a guarantee that every mechanic is implemented.
 
 Paths in this guide are relative to `game/src/` unless shown with a `game/` prefix.
 
 | Stage | File | Planned objective |
 | --- | --- | --- |
-| Level 0 (tutorial) | `levels/level_0/level_0.cpp` | Leave the house through the front door |
+| Level 0 (tutorial) | `levels/level_0/level_0.cpp` | Escape the house |
 | Level 1 | `levels/level_1/level_1.cpp` | Cross the streets and reach campus |
 | Level 2 | `levels/level_2/level_2.cpp` | Climb to the top-floor classroom |
 | Level 3 | `levels/level_3/level_3.cpp` | Face the Entity outside the lecture hall |
@@ -19,17 +19,17 @@ The `LevelDefinition` at the top of each file contains the title, description, i
 
 ## Loading and switching levels
 
-Open **Dev Level Select** from the main or pause menu to load a stage directly for testing. Its preview includes the stage's `.plannedContent` development notes.
+Open **Level Select** from the main or pause menu to load a stage directly for testing. Its preview uses the player-facing `LevelPreviewDescription()` in `ui/menus/menus.cpp`, in Jersey10, above the fixed 16:9 Game Data image slot. `.description` remains the in-game objective and `.plannedContent` is development metadata.
 
 `ui/menus/menus.cpp` creates buttons that send a `StartLevel` action with the chosen `LevelId`. `Game::Apply` in `main.cpp` handles that action: it calls `CreateLevel`, replaces the active scene, and enters the Playing screen. `CreateLevel` in `main.cpp` constructs the registered stage class and calls `Reset`.
 
-Automatic progression to the next level has not been implemented.
+Level 1 has an `exit-level1` trigger and automatically advances to Level 2 on completion. Other progression and the final ending are not yet implemented.
 
 ## Layout
 
-Edit `.world`, `.spawn` and `.objects` in the stage definition. Coordinates are world pixels. The player's collision box is 30 by 44 pixels.
+Edit `.world`, `.spawn` and `.objects` in the stage definition. Coordinates are world pixels. The packaged standing player collision box is 30 by 44 world pixels; crouching reduces its height. Dimensions and offsets are configurable independently of artwork.
 
-`.backdrop` selects a background image. Collision geometry comes from `.objects`, independently of the image. Add stage-specific drawing in `DrawWorld(const Resources&) const`; it runs inside the world camera, before objects and the player are drawn.
+`.backdrop` selects a legacy world background (not the level-select preview). Collision geometry comes from `.objects`, generated world boundaries and scripted contacts, independently of the image. Add stage-specific drawing in `DrawWorld(const Resources&) const`; it runs inside the world camera. `DrawWorldFront` submits Middle-layer drawings after object submissions and before the player, for text or scenery that should cover Middle-layer objects. The queue still respects Game Data layer order.
 
 ### Game objects
 
@@ -58,12 +58,12 @@ new obstacle.
 | --- | --- |
 | `id` | Unique instance id, used to look the object up (`Objects().Get(id)`) |
 | `type` | `Static`, `Moving`, `Hazard`, `Interactive` or `Trigger` |
-| `collision` | `None`, `Solid`, `Hazard` or `Trigger` |
+| `collision` | `None`, `Solid`, `OneWay`, `Hazard` or `Trigger` |
 | `position` / `size` | Visual bounds, in world pixels |
 | `velocity` / `range` | Moving objects ping-pong within `range`; falling objects fall by `range.y` |
 | `falls` | The object only moves once triggered (e.g. an anvil) |
 | `collisionOffset` / `collisionSize` | Collision box, relative to position; defaults to `size` |
-| `assetId` | Game Data Asset ID, e.g. `"platform"`; empty means intentionally invisible |
+| `assetId` | Default Game Data Asset ID, e.g. `"platform"`; overridden by the level sprite mapping; empty means no sprite submission |
 | `initialState` | Animation state, e.g. `"idle"`; the animation is `<assetId>_<state>` |
 | `active` / `visible` | Enabled and drawn state; both reset on restart |
 | `triggerOnce` | The trigger / hazard deactivates after firing once |
@@ -79,20 +79,24 @@ mechanics stay in the object class (`MovingObject`,
 - **Interactive / triggers:** checkpoints (`checkpoint-*` sets the respawn point), level exits (`exit-*` completes the level), and invisible trigger zones. Entering one posts `objectEvents::triggerEntered`.
 
 Collision bounds are independent of sprite dimensions, so replacing
-artwork never changes gameplay. Moving objects update their bounds
-as they move, because `Level` passes `Objects().SolidBounds()` —
-rebuilt every frame — to the player.
+artwork never changes gameplay. `Level::RefreshColliders()` collects active objects
+via `Objects().Colliders()` and adds configured world boundaries. This runs on each
+shared physics substep (at most 1/120 second), so the solver sees current and
+previous positions of moving obstacles.
 
 For art, objects use the AssetManager, not a fixed art slot: each
 object keeps an `Animator` for its current state, and `Level`
 queues its sprites through `SubmitSprites` on the sheet layer, at
 the sheet pivot, with a placeholder when its texture is missing
 (see [ART_ASSETS.md](ART_ASSETS.md#game-data-sprites-and-animations)).
-Adding a Game Data row for an asset (e.g. `platform_idle`) makes
-the finished art appear with no gameplay-code change. An object
-with no `assetId` is never drawn.
-
-The current layouts are placeholders. The stairwell needs a blueprint before its climbing sections are designed.
+Assign object art in `level_<n>_sprites.cpp`: `.sprites = LevelNSprites()` associates
+object instance IDs with Game Data Asset IDs. A trailing `*` matches an ID prefix;
+later mappings override earlier ones. `ArtObject` creates non-colliding artwork
+and `SolidPlatform` creates a solid platform. A missing sprite retains the level
+stand-in if one exists; an empty `assetId` skips sprite submission but does not
+prevent a separate procedural drawing. Adding the assigned Game Data row and PNG
+makes the art appear without changing gameplay code. Keep instance IDs stable
+and update sprite mappings if objects are renamed.
 
 ## Stage logic
 
@@ -129,7 +133,7 @@ void OnUpdate(float dt, const InputFrame& input) override
 | `RespawnPoint()` | Last checkpoint position, or the spawn |
 | `Definition()` | Read the authored level data |
 
-The update order is dialogue, object movement, player movement, hazard and trigger checks, `OnUpdate`, event evaluation, then camera follow. Pause and Settings suspend scene updates. Restart Stage and R clear event completion and pending notifications, restore the player, elapsed time and opening dialogue, reset all objects, then call `OnReset` and update the camera. Clear stage-specific state in `OnReset`. Opening Main Menu or Dev Level Select destroys the active level, its objects and its events.
+The update order is dialogue, shared object/player physics substeps with hazard and trigger checks, particles/animation/audio, `OnUpdate`, scripted contact processing, event evaluation, then camera follow. Pause and Settings suspend scene updates. Restart and R clear event completion and pending notifications, restore the player, elapsed time and opening dialogue, reset all objects, then call `OnReset` and update the camera. Clear stage-specific state in `OnReset`. Opening Main Menu or Level Select destroys the active level, its objects and its events.
 
 Keep update logic out of drawing functions. Use the application's existing frame loop rather than adding a loop inside a stage.
 
@@ -222,16 +226,16 @@ Say({.text = "The stairs do that sometimes.", .speedMultiplier = 1.5f}, Dialogue
 
 Each accepted request gets a new `DialogueCue::id`, even for identical text. IDs restart with the introduction on level reset. Query `CurrentDialogueId()` and `Dialogue().IsComplete()` to inspect the current presentation. The level posts `dialogueEvents::revealStarted` when the start delay expires and `dialogueEvents::revealCompleted` when the entire message becomes visible. Match both the topic and `sourceId`. A completion notification carries a `revealMethod` of `Natural`, `Enter`, or `Instant`. Replay keeps the ID and publishes each milestone at most once across all presentations of that request.
 
-## Design notes
+## Design notes (planned narrative)
 
 The student is sleep deprived and late for class. The Entity gives unreliable advice while the surroundings turn into hallucinated obstacles.
 
 - **Level 0 (house):** falling lights and pipes, floor holes, flooded rooms with electrical hazards, furniture platforming, false gas-leak doors, a fireplace monster.
 - **Level 1 (streets):** traffic, cloud jumps, birds, live telephone poles, rainbow slides, a crossing chicken, falling satellites, flying pigs.
-- **Level 2 (stairwell):** missing stairs, exposed bricks to climb, falling bricks. Design the level blueprint before expanding these mechanics.
+- **Level 2 (stairwell):** missing stairs, exposed bricks to climb, falling bricks. The current vertical route uses street fixtures, ledges, fire escapes and birds; the missing-stairs narrative remains a design goal.
 - **Level 3 (lecture hall):** shifting floors, floating desks and chairs, paper airplanes, wall climbing and the Entity blocking entry.
 
-Basic hazards (respawn at the last checkpoint), checkpoints and stage completion via `exit-*` / `IsComplete()` are provided by the object system. Lives, climbing controls and the boss are pending gameplay work.
+Basic hazards (respawn at the last checkpoint), checkpoints and stage completion via `exit-*` / `IsComplete()` are provided by the object system. Health, stamina, crouch jumping and Level 2 climbing are implemented. The complete tutorial, final boss and remaining progression are still pending.
 
 ## Adding a stage
 
@@ -240,16 +244,16 @@ Basic hazards (respawn at the last checkpoint), checkpoints and stage completion
 3. Declare `Level4Definition` and `MakeLevel4` in `levels/level.h`, then add `{Level4Definition, MakeLevel4}` to `registrations` in `main.cpp`. This list drives both loading and the level selector.
 4. Keep the numeric level ID stable for `game.yaml`; no YAML range change is needed.
 5. Choose an existing `.backdrop`, or add an `ArtId::Level4` entry before `ArtId::Count` and its matching path to `artPaths` in `engine/resources/asset_paths.h`. Keep the enum and path array in the same order. Export the optional PNG to `game/resources/art/levels/level_4.png`. For a distinct fallback illustration, extend `art::LevelBackdrop` in `engine/graphics/placeholder_art.cpp`.
-6. Adjust `LevelSelectItems` and `DrawLevelSelect` in `ui/menus/menus.cpp` to fit the new entry; the current layout has space for four level buttons before the Back button.
+6. Add `level_4_sprites.cpp`, its mapping function and `.sprites` registration, following the existing levels. Adjust `LevelSelectItems`, `LevelPreviewDescription` and `DrawLevelSelect` in `ui/menus/menus.cpp` for the new entry; the layout currently fits four buttons before Back. Assign a new `menu_preview_level_4` Game Data Asset ID with a single idle frame (1920×1080 recommended). Wire progression separately in `Game::Update` if needed.
 7. Build normally: CMake discovers the new source and any helpers under its folder automatically. Registration in `main.cpp` is still required to make a level selectable. Run the tests in [CODE_GUIDE.md](CODE_GUIDE.md); their level loops use `LevelCatalog()` and will include the new entry. Add checks for any new gameplay mechanics.
 
 ## Menus and artwork
 
 Menu layouts are in `ui/menus/menus.cpp`. Shared controls are in `ui/`; navigation and settings actions are handled by `main.cpp`.
 
-Use `DrawTextFit(resources, ...)`, `DrawParagraph(resources, ...)` or `resources.DrawText(...)` for UI text. They use the shared font on the fixed 1600 by 900 canvas. Use `resources.BeginClip(...)` for a clip rectangle in canvas coordinates.
+Use `DrawTextFit(resources, ...)`, `DrawParagraph(resources, ...)` or `resources.DrawText(...)` for UI text. They use the native-resolution font cache with a 1600×900 logical viewport. Use `resources.BeginClip(...)` for a clip rectangle in canvas coordinates.
 
-Font selection, PNG paths and resource copying are covered in [ART_ASSETS.md](ART_ASSETS.md).
+Menu art uses the same CSV AssetManager as world sprites, but with fractional fit to the logical menu rectangle. Use the existing menu IDs and update the master Game Data sheet when changing PNG names or frame sizes. Font selection, artwork dimensions, fallback behavior and resource copying are covered in [ART_ASSETS.md](ART_ASSETS.md).
 
 ## Shared collision system
 
@@ -265,4 +269,4 @@ Moving platforms carry riders, including downward motion, and release them on ju
 
 Existing scripted Level 1 hazards and Level 2 birds publish their geometry through `Level::ScriptContact`. Shared detection and entry tracking provide named contact events and debug outlines while the script retains its response (bounce, slide, restart). Gas uses an AABB around its drawn cloud. New reusable obstacles should use object definitions. Recycled scripted objects must receive new instance IDs; pigs and gas use monotonic spawn IDs.
 
-Use `debug.show_hitboxes: true` in config to inspect boxes and IDs. The automated collision tests cover all directions, thin fast crossings, one-way surfaces, overlap recovery, moving platforms, pushes/crushes, falling-object landings, filters, damage on entry, kill zones, and level spawn grounding across 30/60/144/240 FPS.
+Use `debug.show_hitboxes: true` in `game/resources/config.yaml` to inspect obstacle boxes and IDs. Solid geometry is green, one-way platforms sky blue, hazards red and explicitly marked contact obstacles yellow. Ordinary trigger zones (including exits and checkpoints), decorative objects, disabled scripted shapes and the player box are not drawn. World boundaries and fall hazards remain included. For non-blocking scripted obstacles that use `CollisionType::Trigger` (such as bird knockback), pass `obstacleSensor = true` as the final argument of `ScriptContact`; this only affects debug drawing and does not change contact behavior. The automated collision tests cover all directions, thin fast crossings, one-way surfaces, overlap recovery, moving platforms, pushes/crushes, falling-object landings, filters, damage on entry, kill zones, and level spawn grounding across 30/60/144/240 FPS.

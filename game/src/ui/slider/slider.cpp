@@ -48,12 +48,12 @@ namespace rage {
         return std::abs(value - previous) > 0.000001f;
     }
 
-    void Slider::Draw(bool focused) const {
+    void Slider::Draw(bool focused, Color highlight) const {
         const float center = bounds.y + bounds.height / 2.0f;
         DrawRectangleRec({bounds.x + 20, center - 4, std::max(0.0f, bounds.width - 40), 8}, theme::border);
-        DrawRectangleRec({bounds.x + 20, center - 4, PositionFromValue(value) - bounds.x - 20, 8}, theme::mint);
+        DrawRectangleRec({bounds.x + 20, center - 4, PositionFromValue(value) - bounds.x - 20, 8}, highlight);
         const Rectangle knob = {PositionFromValue(value) - 12, center - 16, 24, 32};
-        DrawRectangleRec(knob, focused || dragging ? theme::gold : theme::paper);
-        if (focused) DrawRectangleLinesEx({bounds.x - 6, bounds.y - 5, bounds.width + 12, bounds.height + 10}, 1, theme::mint);
+        DrawRectangleRec(knob, focused || dragging ? highlight : theme::paper);
+        if (focused) DrawRectangleLinesEx({bounds.x - 6, bounds.y - 5, bounds.width + 12, bounds.height + 10}, 1, highlight);
     }
 }

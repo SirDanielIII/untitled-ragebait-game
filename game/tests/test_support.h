@@ -17,6 +17,18 @@ namespace rage::test {
         return std::abs(a - b) < tolerance;
     }
 
+    class TestRenderTarget {
+    public:
+        explicit TestRenderTarget(int width = canvasWidth, int height = canvasHeight)
+            : target(LoadRenderTexture(width, height)) {
+            Check(target.id != 0, "Could not create test render target");
+        }
+        ~TestRenderTarget() { UnloadRenderTexture(target); }
+        TestRenderTarget(const TestRenderTarget &) = delete;
+        TestRenderTarget &operator=(const TestRenderTarget &) = delete;
+        RenderTexture2D target;
+    };
+
     class TestDirectory {
     public:
         const std::filesystem::path path = std::filesystem::temp_directory_path() /

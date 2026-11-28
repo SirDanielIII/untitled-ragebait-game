@@ -156,11 +156,12 @@ void TestBirdRendering() {
     diving.SubmitSprites(queue, assets, 2);
     // Submitted later, but the sheet's Foreground layer must keep birds in front.
     queue.Submit(Layer::Middle, [] { DrawRectangle(90, 90, 20, 20, GREEN); });
-    BeginTextureMode(resources.Canvas());
+    const test::TestRenderTarget target;
+    BeginTextureMode(target.target);
     ClearBackground(BLACK);
     queue.Flush();
     EndTextureMode();
-    Image rendered = LoadImageFromTexture(resources.Canvas().texture);
+    Image rendered = LoadImageFromTexture(target.target.texture);
     ImageFlipVertical(&rendered);
     Check(Same(GetImageColor(rendered, 95, 100), RED) && Same(GetImageColor(rendered, 105, 100), WHITE),
           "Bird sprite pivot or sheet layer was ignored");
@@ -178,11 +179,11 @@ void TestBirdRendering() {
     AssetManager flyOnly;
     flyOnly.Load(fixture.path);
     diving.SubmitSprites(queue, flyOnly, 2);
-    BeginTextureMode(resources.Canvas());
+    BeginTextureMode(target.target);
     ClearBackground(BLACK);
     queue.Flush();
     EndTextureMode();
-    rendered = LoadImageFromTexture(resources.Canvas().texture);
+    rendered = LoadImageFromTexture(target.target.texture);
     ImageFlipVertical(&rendered);
     const bool flyFallback = Same(GetImageColor(rendered, 495, 171), RED);
     UnloadImage(rendered);
@@ -196,11 +197,11 @@ void TestBirdRendering() {
     for (const auto *source : {&empty, &missing}) {
         RenderQueue fallback;
         right.SubmitSprites(fallback, *source, 2);
-        BeginTextureMode(resources.Canvas());
+        BeginTextureMode(target.target);
         ClearBackground(MAGENTA);
         fallback.Flush();
         EndTextureMode();
-        Image image = LoadImageFromTexture(resources.Canvas().texture);
+        Image image = LoadImageFromTexture(target.target.texture);
         ImageFlipVertical(&image);
         const bool visible = !Same(GetImageColor(image, 100, 100), MAGENTA);
         UnloadImage(image);

@@ -89,7 +89,7 @@ namespace rage {
                 effects.shakePixels * static_cast<float>(std::sin(phase * 1.37))};
     }
 
-    std::vector<TextLine> WrapText(const std::string &text, float width, const TextMeasure &measure) {
+    std::vector<TextLine> WrapText(std::string_view text, float width, const TextMeasure &measure) {
         std::vector<TextLine> lines;
         std::size_t start = 0;
         std::size_t cursor = 0;
@@ -130,11 +130,11 @@ namespace rage {
         if (!resources.DrawArt(ArtId::DialoguePanel, bounds, ArtFit::Stretch, Fade(WHITE, opacity)))
             DrawRectangleRec(bounds, Fade({28, 26, 42, 255}, opacity));
         DrawRectangleLinesEx(bounds, 2.0f, Fade({127, 151, 176, 255}, opacity));
-        resources.DrawText(speaker, {bounds.x + 18, bounds.y + 12}, 18, 1, Fade({242, 197, 112, 255}, opacity));
+        resources.DrawText(speaker, {bounds.x + 18, bounds.y + 12}, 18, 1, Fade({242, 197, 112, 255}, opacity), FontRole::Heading);
         const float width = std::max(1.0f, bounds.width - 36.0f);
         // Wrap the full message so unrevealed words reserve their final positions.
         const auto lines = WrapText(writer.Text(), width, [&](std::string_view text) {
-            return resources.MeasureText(text, fontSize, 1.0f).x;
+            return resources.MeasureText(text, fontSize, 1.0f, FontRole::Typewriter).x;
         });
         const float lineHeight = fontSize + 7.0f;
         const int capacity = std::max(1, static_cast<int>((bounds.height - 76.0f) / lineHeight));
@@ -148,9 +148,9 @@ namespace rage {
             const auto line = lines[i];
             if (writer.VisibleBytes() < line.begin) break;
             const auto end = std::min(line.end, writer.VisibleBytes());
-            const auto visible = writer.Text().substr(line.begin, end - line.begin);
+            const auto visible = std::string_view(writer.Text()).substr(line.begin, end - line.begin);
             resources.DrawText(visible, {bounds.x + 18 + offset.x, bounds.y + 42 + (i - first) * lineHeight + offset.y},
-                               fontSize, 1, Fade(RAYWHITE, opacity));
+                               fontSize, 1, Fade(RAYWHITE, opacity), FontRole::Typewriter);
         }
         EndScissorMode();
         resources.DrawText(hint, hintPosition, 16, 1, hintColor);

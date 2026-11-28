@@ -17,6 +17,21 @@ bool Has(const CollisionResult &result, const char *id) {
     return std::ranges::any_of(result.contacts, [&](const auto &c) { return c.objectId == id; });
 }
 
+void TestDebugObstacles() {
+    const Rectangle bounds{10, 20, 30, 40};
+    for (auto type : {CollisionType::Solid, CollisionType::OneWay, CollisionType::Hazard}) {
+        Check(Box("obstacle", bounds, type).IsDebugObstacle(), "Physical obstacle omitted from debug overlay");
+    }
+    Check(!Box("art", bounds, CollisionType::None).IsDebugObstacle(), "Decorative object shown in debug overlay");
+    auto bird = Box("bird", bounds, CollisionType::Trigger);
+    Check(!bird.IsDebugObstacle(), "Ordinary trigger shown in obstacle overlay");
+    bird.obstacleSensor = true;
+    Check(bird.IsDebugObstacle(), "Non-blocking bird obstacle omitted from overlay");
+    bird.type = CollisionType::None;
+    Check(!bird.IsDebugObstacle(), "Disabled obstacle sensor shown in debug overlay");
+    Check(!Box("empty", {10, 20, 0, 40}).IsDebugObstacle(), "Empty collider shown in debug overlay");
+}
+
 void TestSweeps() {
     CollisionSystem system;
     system.SetColliders({Box("floor", {-100, 100, 300, 1}), Box("ceiling", {-100, -1, 300, 1}),
@@ -226,7 +241,7 @@ void TestConfigFiles() {
 }
 }
 void TestCollisions() {
-    TestSweeps(); TestMovingSolids(); TestSensors(); TestIntegration(); TestConfigFiles();
+    TestDebugObstacles(); TestSweeps(); TestMovingSolids(); TestSensors(); TestIntegration(); TestConfigFiles();
     std::cout << "PASS: swept AABBs, moving solids, sensors, filters, contact IDs, damage, kill zones, four levels and split YAML\n";
 }
 }

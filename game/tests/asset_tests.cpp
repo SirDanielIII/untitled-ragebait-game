@@ -159,18 +159,14 @@ void TestFramesAndPlayback()
     Check(FitScale(16, 32, 4, 4, 2) == 0.5f, "Best fit must keep at least one screen pixel per art pixel");
     Check(FitScale(32, 16, 30, 44, 2) == 0.5f, "Best fit must use the tighter side (wide art in a tall box)");
 
-    // Window presentation: whole multiples are exact, other enlargements go through a sharp
-    // upscale, and shrinking or oversized targets fall back to smooth scaling.
-    const auto present = [](float scale, PresentMode mode, int factor) {
-        const Presentation chosen = ChoosePresentation(scale);
-        return chosen.mode == mode && chosen.factor == factor;
-    };
-    Check(present(1.0f, PresentMode::Exact, 1) && present(2.0f, PresentMode::Exact, 2) &&
-          present(1.0005f, PresentMode::Exact, 1), "Whole-number window scales should be exact");
-    Check(present(1.6f, PresentMode::SharpUpscale, 2) && present(1.2f, PresentMode::SharpUpscale, 2) &&
-          present(2.4f, PresentMode::SharpUpscale, 3), "Fractional enlargements should upscale sharply");
-    Check(present(0.854f, PresentMode::Smooth, 1) && present(0.0f, PresentMode::Smooth, 1) &&
-          present(5.3f, PresentMode::Smooth, 1), "Shrinking, invalid and oversized scales should be smooth");
+    // Physical viewport mapping must preserve the logical coordinates and offsets.
+    const Rectangle destination = CanvasDestination(2560, 1600);
+    const Vector2 mapped = Vector2Transform({800, 450}, ViewportMatrix(destination));
+    Check(test::Near(mapped.x, 1280) && test::Near(mapped.y, 800), "Native viewport mapping failed");
+    const Camera2D camera{{800, 330}, {100, 200}, 0, 2};
+    const Vector2 focus = Vector2Transform(camera.target, CameraModelview(camera, ViewportMatrix(destination)));
+    const Vector2 expected = Vector2Transform(camera.offset, ViewportMatrix(destination));
+    Check(test::Near(focus.x, expected.x) && test::Near(focus.y, expected.y), "Native camera composition failed");
     Check(ShouldFlip(Facing::Right, Facing::Left) && !ShouldFlip(Facing::Right, Facing::Right) &&
           !ShouldFlip(Facing::None, Facing::Left), "Facing flip rule failed");
 
@@ -183,6 +179,11 @@ void TestFramesAndPlayback()
     queue.Submit(Layer::Middle, [&] { order.push_back(22); });
     queue.Flush();
     Check(order == std::vector<int>{1, 2, 22, 3, 4} && queue.Size() == 0, "Layer order failed");
+    order.clear();
+    queue.Submit(Layer::Foreground, [&] { order.push_back(3); });
+    queue.Submit(Layer::Background, [&] { order.push_back(1); });
+    queue.Flush();
+    Check(order == std::vector<int>{1, 3} && queue.Size() == 0, "Reused queue replayed an old job or changed layer order");
 }
 
 void TestPlayerAnimationState()
@@ -271,7 +272,8 @@ void TestAssetRendering()
     Check(assets.HasTexture(*walk) && assets.HasTexture(*idle) && assets.HasTexture(*signData) && !assets.HasTexture(*ghost),
           "Texture availability is wrong");
 
-    BeginTextureMode(resources.Canvas());
+    const test::TestRenderTarget target;
+    BeginTextureMode(target.target);
     ClearBackground(BLACK);
     const float scale = 4;
     const bool drew = assets.Draw(*walk, 0, {100, 100}, Facing::Right, {}, scale) == DrawResult::Texture &&
@@ -305,7 +307,7 @@ void TestAssetRendering()
     Check(drew && customPlaceholder, "Draw results or placeholder bounds are wrong");
     Check(fitted && fittedPlaceholder, "Best-fit draw results or placeholder bounds are wrong");
 
-    Image rendered = LoadImageFromTexture(resources.Canvas().texture);
+    Image rendered = LoadImageFromTexture(target.target.texture);
     ImageFlipVertical(&rendered);
     const auto pixel = [&](int x, int y) { return GetImageColor(rendered, x, y); };
 
@@ -334,6 +336,140 @@ void TestAssetRendering()
     Check(fitOk, "Best fit did not fill its box crisply without stretching, or left its pivot");
     Check(fitFlipOk, "Best fit did not mirror correctly");
     Check(fitQueueOk, "RenderQueue::SubmitFitted did not draw the fitted frame");
+    // Exercise the same viewport and camera composition as the live game. These
+    // test targets stand in for a physical framebuffer, not the old world canvas.
+    for (const int width : {960, 1366, 1920, 2560}) {
+        const int height = width * 10 / 16; // Deliberate top/bottom letterbox.
+        const Rectangle viewport = CanvasDestination(static_cast<float>(width), static_cast<float>(height));
+        const Matrix screen = ViewportMatrix(viewport);
+        const Camera2D camera{{400, 300}, {100, 100}, 0, 2};
+        const Matrix world = CameraModelview(camera, screen);
+        const test::TestRenderTarget native(width, height);
+        resources.BeginFrame();
+        resources.SetViewport(viewport);
+        BeginTextureMode(native.target);
+        ClearBackground(BLACK);
+        {
+            const ScopedModelview logical(screen);
+            resources.BeginClip(worldViewport);
+            {
+                const ScopedModelview cameraScope(world);
+                // Source pixels, facing, animation and local matrix transforms must
+                // still work when the viewport is applied AFTER the world camera.
+                assets.Draw(*walk, 0, {100, 100}, Facing::Right, {}, 4);
+                assets.Draw(*walk, 0, {160, 100}, Facing::Left, {}, 4);
+                assets.Draw(*walk, 3, {220, 100}, Facing::Right, {}, 4);
+                rlPushMatrix();
+                rlTranslatef(280, 100, 0);
+                rlScalef(1, 0.5f, 1);
+                assets.Draw(*walk, 0, {0, 0}, Facing::Right, {}, 4);
+                rlPopMatrix();
+                DrawRectangle(-1000, 275, 3000, 80, MAGENTA); // Crosses world clip.
+            }
+            EndScissorMode();
+            DrawRectangle(50, 700, 50, 50, cyan); // Camera must not affect HUD.
+        }
+        EndTextureMode();
+        Image image = LoadImageFromTexture(native.target.texture);
+        ImageFlipVertical(&image);
+        const auto sample = [&](Vector2 point, Matrix transform) {
+            const Vector2 pixel = Vector2Transform(point, transform);
+            return GetImageColor(image, static_cast<int>(pixel.x), static_cast<int>(pixel.y));
+        };
+        Check(Same(sample({90, 84}, world), red) && Same(sample({110, 84}, world), white),
+              "Native camera moved or filtered the sprite/pivot");
+        Check(Same(sample({150, 84}, world), white) && Same(sample({170, 84}, world), red),
+              "Native camera broke sprite mirroring");
+        Check(Same(sample({220, 84}, world), yellow), "Native camera broke sprite frame selection");
+        Check(Same(sample({270, 92}, world), red) && Same(sample({290, 92}, world), white) &&
+              Same(sample({270, 76}, world), BLACK), "Native camera broke nested sprite scaling");
+        Check(Same(sample({800, 655}, screen), MAGENTA) && Same(sample({800, 665}, screen), BLACK),
+              "Native world clipping leaked into HUD");
+        Check(Same(sample({75, 725}, screen), cyan) && Same(GetImageColor(image, width/2, 0), BLACK),
+              "Native HUD transform or letterbox changed");
+        const auto a = Vector2Transform({84, 80}, world);
+        const auto b = Vector2Transform({116, 80}, world);
+        for (int x = static_cast<int>(std::ceil(a.x)); x < static_cast<int>(b.x); ++x) {
+            const Color color = GetImageColor(image, x, static_cast<int>(a.y));
+            Check(Same(color, red) || Same(color, white), "Native sprite sampling introduced blended pixels");
+        }
+        UnloadImage(image);
+    }
+    std::cout << "PASS: native camera, sprite frames, mirroring, nested transforms, clipping and letterbox at four resolutions\n";
     std::cout << "PASS: Game Data textures (static, strip/grid animation, shared PNG), pivots, flipping, placeholders, layers and crisp best fit\n";
 }
+
+// Exercise a real mapping from level_1_sprites.cpp, not just a generic sprite.
+// Adding a CSV row must replace the original sign, without hiding its front text.
+void TestMappedLevelSpriteRendering() {
+    TestDirectory fixture;
+    const auto csvPath = fixture.path / gameDataPath;
+    std::filesystem::create_directories(csvPath.parent_path());
+    std::filesystem::create_directories(fixture.path / staticArtFolder);
+    const Color marker{164, 23, 201, 255};
+    Image sign = GenImageColor(41, 69, marker);
+    const bool exported = ExportImage(sign, (fixture.path / staticArtFolder / "school.png").string().c_str());
+    UnloadImage(sign);
+    Check(exported, "Could not create mapped sign fixture");
+    // Keep identical font metrics in the before/after resources.
+    const auto source = FindResourceDirectory();
+    for (const auto path : fontPaths) {
+        const auto destination = fixture.path / path;
+        if (std::filesystem::exists(source / path)) {
+            std::filesystem::create_directories(destination.parent_path());
+            std::filesystem::copy_file(source / path, destination);
+        }
+    }
+    Resources original(fixture.path);
+    {
+        std::ofstream csv(csvPath);
+        csv << "Animation ID,Asset ID,File Name,Frame Width (px),Frame Height (px),Frames,Frames per Row,FPS,Loops,Pivot,Faces,Layer,Notes\n"
+               "school,sign_school,school.png,41,69,1,,,,top-left,,Middle,\n";
+    }
+    Resources replaced(fixture.path);
+    GameConfig config;
+    auto level = CreateLevel(LevelId::Level1, config);
+    const auto *object = level->Objects().Get("sign-school");
+    Check(object && object->AssetId() == "sign_school" && object->HasStandIn(), "School sprite mapping changed");
+    const auto *animation = replaced.Assets().Find("sign_school", "");
+    Check(animation && replaced.Assets().HasTexture(*animation), "Mapped school sprite did not load");
+    for (const int width : {960, 1366, 1920, 2560}) {
+        const int height = width * 9 / 16;
+        const Rectangle viewport = CanvasDestination(width, height);
+        const Matrix screen = ViewportMatrix(viewport);
+        const Matrix world = CameraModelview(level->Camera(), screen);
+        auto render = [&](Resources &resources) {
+            const test::TestRenderTarget target(width, height);
+            resources.BeginFrame();
+            resources.SetViewport(viewport);
+            BeginTextureMode(target.target);
+            ClearBackground(BLACK);
+            { const ScopedModelview scope(screen); level->DrawScene(resources, config); }
+            EndTextureMode();
+            Image image = LoadImageFromTexture(target.target.texture);
+            ImageFlipVertical(&image);
+            return image;
+        };
+        Image before = render(original);
+        Image after = render(replaced);
+        const auto point = Vector2Transform({498, 1348}, world);
+        const Color previous = GetImageColor(before, int(point.x), int(point.y));
+        const Color current = GetImageColor(after, int(point.x), int(point.y));
+        // Count exactly matching opaque text pixels in the original and replaced sign.
+        const Vector2 a = Vector2Transform({500, 1350}, world);
+        const Vector2 b = Vector2Transform({570, 1374}, world);
+        int glyphs = 0;
+        for (int y = int(a.y); y < int(b.y); ++y)
+            for (int x = int(a.x); x < int(b.x); ++x)
+                if (Same(GetImageColor(before, x, y), RAYWHITE) &&
+                    Same(GetImageColor(after, x, y), RAYWHITE)) ++glyphs;
+        UnloadImage(before);
+        UnloadImage(after);
+        Check(Same(previous, Color{57, 110, 142, 255}) && Same(current, marker),
+              "Mapped sprite did not replace its original stand-in at the same pivot");
+        Check(glyphs > 10, "DrawWorldFront text was lost behind the mapped sprite");
+    }
+    std::cout << "PASS: actual Level 1 mapped sprite replaces stand-in and preserves front text at four resolutions\n";
+}
+
 }

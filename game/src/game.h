@@ -17,7 +17,11 @@ namespace rage {
         explicit Game(GameConfig &config);
 
         bool Update(float dt, const InputFrame &input); // true for discrete menu click feedback
-        void Draw(const Resources &resources, const std::string &settingsStatus) const;
+        // Draw directly to the active framebuffer, using a physical-pixel destination.
+        void DrawFrame(Resources &resources, Rectangle physical) const;
+        bool HasVisibleWorld() const;
+        void DrawScene(const Resources &resources) const;
+        void DrawUi(const Resources &resources) const;
 
         ScreenId Screen() const { return screen; }
         const Level *ActiveLevel() const { return activeLevel.get(); }
@@ -25,6 +29,7 @@ namespace rage {
         bool WantsQuit() const { return quit; }
 
         bool TakeSettingsDirty();
+        void SetFullscreenPreference(bool enabled);
 
         // Sound IDs the active level requested since the last call (none outside a level).
         std::vector<std::string> TakeSoundRequests();

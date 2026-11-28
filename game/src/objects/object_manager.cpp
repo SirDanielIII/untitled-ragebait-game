@@ -47,6 +47,7 @@ namespace rage {
             return false;
         }
         objects.erase(it, objects.end());
+        removedSinceSnapshot = true;
         return true;
     }
 
@@ -100,8 +101,9 @@ namespace rage {
         return object != nullptr && object->IsTriggered();
     }
 
-    std::vector<Collider> ObjectManager::Colliders() const {
+    std::vector<Collider> ObjectManager::Colliders(std::size_t extraCapacity) const {
         std::vector<Collider> result;
+        result.reserve(objects.size() + extraCapacity);
         for (const auto &object : objects) {
             if (!object->IsActive()) continue;
             const auto old = previousBounds.find(object->Id());
@@ -113,9 +115,13 @@ namespace rage {
     }
 
     void ObjectManager::UpdateAll(float dt) {
-        previousBounds.clear();
+        // Retain map nodes between steps. Clear only when a removal can leave stale IDs.
+        if (removedSinceSnapshot) {
+            previousBounds.clear();
+            removedSinceSnapshot = false;
+        }
         for (auto &object : objects) {
-            previousBounds[object->Id()] = object->CollisionBounds();
+            previousBounds.insert_or_assign(object->Id(), object->CollisionBounds());
             if (object->IsActive()) object->Update(dt);
         }
         if (dt <= 0) return;
@@ -142,6 +148,7 @@ namespace rage {
 
     void ObjectManager::ResetAll() {
         previousBounds.clear();
+        removedSinceSnapshot = false;
         for (auto &object : objects) {
             object->Reset();
         }
@@ -150,6 +157,7 @@ namespace rage {
     void ObjectManager::Clear() {
         objects.clear();
         previousBounds.clear();
+        removedSinceSnapshot = false;
     }
 
     std::vector<Rectangle> ObjectManager::SolidBounds(CollisionType collision) const {

@@ -2,3 +2,12 @@ Animation ID,Asset ID,File Name,Frame Width (px),Frame Height (px),Frames,Frames
 player_idle,player_character,male_character.png,16,32,1,,,,bottom-centre,,Middle,test sprite
 bird_fly,bird,,19,14,1,,,,centre,right,Middle,Shared Level 1 and Level 2 bird; add a PNG when ready
 bird_swoop,bird,,19,14,1,,,,centre,right,Middle,Optional Level 2 swoop art
+menu_main_idle,menu_main,menus/main.png,3840,2160,1,,,,centre,,UI,Optional 4K menu background
+menu_settings_idle,menu_settings,menus/settings.png,3840,2160,1,,,,centre,,UI,Optional 4K menu background
+menu_level_select_idle,menu_level_select,menus/stage_select.png,3840,2160,1,,,,centre,,UI,Optional 4K menu background
+menu_pause_idle,menu_pause,menus/pause.png,3840,2160,1,,,,centre,,UI,Optional 4K menu background
+menu_pause_sprite_idle,menu_pause_sprite,menus/pause_sprite.png,1920,1440,1,,,,centre,,UI,Transparent pause artwork 4:3
+menu_preview_level_0_idle,menu_preview_level_0,menus/previews/level_0.png,1920,1080,1,,,,centre,,UI,Level preview 16:9
+menu_preview_level_1_idle,menu_preview_level_1,menus/previews/level_1.png,1920,1080,1,,,,centre,,UI,Level preview 16:9
+menu_preview_level_2_idle,menu_preview_level_2,menus/previews/level_2.png,1920,1080,1,,,,centre,,UI,Level preview 16:9
+menu_preview_level_3_idle,menu_preview_level_3,menus/previews/level_3.png,1920,1080,1,,,,centre,,UI,Level preview 16:9
