@@ -1,16 +1,5 @@
 # Supported YAML subset: sections with two-space-indented number/bool settings.
 # Units: pixels, seconds, pixels/second, pixels/second^2, characters/second.
-window:
-  width: 1600
-  height: 900
-  target_fps: 60 # Saved cap: 30-360 FPS; retained when Unlimited is enabled.
-  unlimited_fps: false
-  show_fps: false
-audio:
-  master_volume: 1.0
-  muted: false
-  music_volume: 1.0
-  sfx_volume: 1.0
 player:
   move_speed: 220
   ground_acceleration: 1000
@@ -36,7 +25,8 @@ player:
   low_stamina_threshold: 0.3 # Red bar and movement slowdown below this fraction of max stamina.
   exhaustion_recovery_threshold: 0.15 # Fraction of max stamina after hitting zero.
   exhausted_speed_multiplier: 0.5 # Applies to walking AND crouching while low on stamina or exhausted.
-dialogue:
-  characters_per_second: 40
-session:
-  last_level: 0
+  collision_offset_x: 0
+  collision_offset_y: 0
+  max_health: 1
+debug:
+  show_hitboxes: true

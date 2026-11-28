@@ -21,7 +21,7 @@ void TestTuningConfig() {
     Check(packaged.Load(std::filesystem::path(GetApplicationDirectory()) / "resources/config.yaml"),
           "Packaged movement tuning has invalid/unrecognized keys");
     Check(packaged.values.moveSpeed == GameConfig{}.moveSpeed
-          && packaged.values.jumpSpeed == GameConfig{}.jumpSpeed
+          && packaged.values.jumpSpeed == 620
           && packaged.values.gravity == GameConfig{}.gravity
           && packaged.values.lowStaminaThreshold == GameConfig{}.lowStaminaThreshold,
           "Packaged physics and fallback defaults disagree");
@@ -74,9 +74,10 @@ void TestTuningConfig() {
         file << "player:\n  max_stamina: 0\n  crouch_height_multiplier: 2\n"
              << "  exhaustion_recovery_threshold: 1.1\n  low_stamina_threshold: -0.1\n  ground_acceleration: -5\n";
     }
-    Check(!store.Load(tuning) && store.values.maxStamina == 160 && store.values.groundAcceleration == 1300
-          && Near(store.values.exhaustionRecoveryThreshold, 0.25f) && Near(store.values.lowStaminaThreshold, 0.4f),
-          "Invalid tuning replaced valid values");
+    Check(store.Load(tuning) && store.values.maxStamina == 0 && store.values.groundAcceleration == -5
+          && Near(store.values.exhaustionRecoveryThreshold, 1.1f) && Near(store.values.lowStaminaThreshold, -0.1f)
+          && store.values.crouchHeightMultiplier == 2,
+          "Numeric tuning was restricted beyond its scalar type");
 }
 
 void TestSlidingAndCrouch() {

@@ -79,7 +79,9 @@ namespace rage {
     }
 
     void GameWindow::SavePreferences() {
-        const bool saved = config.Save(settingsPath, true);
+        const bool settingsSaved = config.SaveFile(settingsPath, ConfigFile::Settings);
+        const bool gameSaved = config.SaveFile(settingsPath.parent_path() / "game.yaml", ConfigFile::SaveData);
+        const bool saved = settingsSaved && gameSaved;
         settingsStatus = saved ? "Preferences saved." : "Saving failed; changes still apply this session.";
         if (!saved) TraceLog(LOG_WARNING, "%s", config.diagnostics.back().c_str());
         preferencesPending = false;

@@ -18,6 +18,10 @@ namespace rage {
         bool muted = false;
         float musicVolume = 0.8f; // Music slider; multiplied by the master volume.
         float sfxVolume = 1.0f;   // Sound effects, UI and voice slider.
+        bool showHitboxes = false;
+        float collisionOffsetX = 0;
+        float collisionOffsetY = 0;
+        int maxHealth = 1;
         float moveSpeed = 220.0f;
         float groundAcceleration = 1100.0f;
         float counterStrafeAcceleration = 1800.0f;
@@ -50,6 +54,8 @@ namespace rage {
     // A deliberately small YAML subset: section maps containing plain number/bool scalars.
     // Load overlays valid keys onto the current values; bad/missing keys keep their defaults.
     // Runtime user preferences exclude player tuning so packaged edits always apply.
+    enum class ConfigFile { All, Tuning, Settings, SaveData };
+
     class ConfigStore {
     public:
         GameConfig values;
@@ -59,6 +65,11 @@ namespace rage {
 
         bool Save(const std::filesystem::path &path, bool preferencesOnly = false);
 
+        bool LoadFile(const std::filesystem::path &path, ConfigFile kind, bool optional = false);
+        bool SaveFile(const std::filesystem::path &path, ConfigFile kind);
         static std::filesystem::path DefaultSettingsPath();
+        static std::filesystem::path DefaultGamePath();
+    private:
+        ConfigFile fileKind = ConfigFile::All;
     };
 }

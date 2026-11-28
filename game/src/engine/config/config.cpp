@@ -2,6 +2,8 @@
 #include "raylib.h"
 
 #include <charconv>
+#include <algorithm>
+#include <limits>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -19,6 +21,8 @@ namespace rage {
 
         // One registry keeps player tuning and serialization in sync.
         constexpr PlayerSetting playerSettings[] = {
+            {"collision_offset_x", &GameConfig::collisionOffsetX},
+            {"collision_offset_y", &GameConfig::collisionOffsetY},
             {"move_speed", &GameConfig::moveSpeed},
             {"ground_acceleration", &GameConfig::groundAcceleration},
             {"counter_strafe_acceleration", &GameConfig::counterStrafeAcceleration},
@@ -68,6 +72,13 @@ namespace rage {
             return true;
         }
 
+        bool Volume(const std::string &text, float &output) {
+            float value;
+            if (!Number(text, value) || value < 0 || value > 1) return false;
+            output = value;
+            return true;
+        }
+
         bool Boolean(const std::string &text, bool &output) {
             if (text != "true" && text != "false") return false;
             output = text == "true";
@@ -108,7 +119,7 @@ namespace rage {
             const std::string value = Trim(line.substr(colon + 1));
             if (indent == 0) {
                 section = key;
-                if (!value.empty() || (key != "window" && key != "audio" && key != "player" && key != "dialogue" && key != "session")) {
+                if (!value.empty() || (key != "window" && key != "audio" && key != "player" && key != "dialogue" && key != "session" && key != "debug")) {
                     section.clear();
                     reject();
                 }
@@ -116,7 +127,10 @@ namespace rage {
             }
             const std::string fullKey = section + "." + key;
             // Old settings files included gameplay values. They must not mask tuning edits.
-            if (preferencesOnly && section == "player") continue;
+            const auto kind = preferencesOnly ? ConfigFile::Settings : fileKind;
+            if (kind == ConfigFile::Settings && (section == "player" || section == "debug" || section == "session")) continue;
+            if (kind == ConfigFile::Tuning && section != "player" && section != "debug") continue;
+            if (kind == ConfigFile::SaveData && section != "session") continue;
             if (section.empty() || !seen.insert(fullKey).second) {
                 reject();
                 continue;
@@ -127,10 +141,12 @@ namespace rage {
             else if (fullKey == "window.target_fps") accepted = Number(value, values.targetFps);
             else if (fullKey == "window.unlimited_fps") accepted = Boolean(value, values.unlimitedFps);
             else if (fullKey == "window.show_fps") accepted = Boolean(value, values.showFps);
-            else if (fullKey == "audio.master_volume") accepted = Number(value, values.masterVolume);
+            else if (fullKey == "audio.master_volume") accepted = Volume(value, values.masterVolume);
             else if (fullKey == "audio.muted") accepted = Boolean(value, values.muted);
-            else if (fullKey == "audio.music_volume") accepted = Number(value, values.musicVolume);
-            else if (fullKey == "audio.sfx_volume") accepted = Number(value, values.sfxVolume);
+            else if (fullKey == "audio.music_volume") accepted = Volume(value, values.musicVolume);
+            else if (fullKey == "audio.sfx_volume") accepted = Volume(value, values.sfxVolume);
+            else if (fullKey == "debug.show_hitboxes") accepted = Boolean(value, values.showHitboxes);
+            else if (fullKey == "player.max_health") accepted = Number(value, values.maxHealth);
             else if (section == "player") {
                 for (const auto &setting: playerSettings) {
                     if (setting.key == key) {
@@ -159,25 +175,49 @@ namespace rage {
         }
         std::ofstream file(path);
         file.imbue(std::locale::classic());
-        file << std::setprecision(6)
-                << "# Settings; no gameplay progress or unlocks are stored.\n"
-                << "window:\n  width: " << values.windowWidth << "\n  height: " << values.windowHeight
-                << "\n  target_fps: " << values.targetFps << "\n  unlimited_fps: " << (values.unlimitedFps ? "true" : "false")
-                << "\n  show_fps: " << (values.showFps ? "true" : "false")
-                << "\naudio:\n  master_volume: " << values.masterVolume << "\n  muted: " << (values.muted ? "true" : "false")
-                << "\n  music_volume: " << values.musicVolume << "\n  sfx_volume: " << values.sfxVolume;
-        if (!preferencesOnly) {
-            file << "\nplayer:";
-            for (const auto &setting: playerSettings) file << "\n  " << setting.key << ": " << values.*(setting.field);
+        const auto kind = preferencesOnly ? ConfigFile::Settings : fileKind;
+        file << std::setprecision(std::numeric_limits<float>::max_digits10);
+        if (kind == ConfigFile::All || kind == ConfigFile::Settings) {
+            file << "# Player preferences\nwindow:\n  width: " << values.windowWidth << "\n  height: " << values.windowHeight
+                 << "\n  target_fps: " << values.targetFps << "\n  unlimited_fps: " << (values.unlimitedFps ? "true" : "false")
+                 << "\n  show_fps: " << (values.showFps ? "true" : "false")
+                 << "\naudio:\n  master_volume: " << std::clamp(values.masterVolume, 0.0f, 1.0f)
+                 << "\n  muted: " << (values.muted ? "true" : "false")
+                 << "\n  music_volume: " << std::clamp(values.musicVolume, 0.0f, 1.0f)
+                 << "\n  sfx_volume: " << std::clamp(values.sfxVolume, 0.0f, 1.0f)
+                 << "\ndialogue:\n  characters_per_second: " << values.charactersPerSecond << '\n';
         }
-        file << "\ndialogue:\n  characters_per_second: " << values.charactersPerSecond
-                << "\nsession:\n  last_level: " << values.lastLevel << '\n';
+        if (kind == ConfigFile::All || kind == ConfigFile::Tuning) {
+            file << "player:\n  max_health: " << values.maxHealth;
+            for (const auto &setting : playerSettings) file << "\n  " << setting.key << ": " << values.*(setting.field);
+            file << "\ndebug:\n  show_hitboxes: " << (values.showHitboxes ? "true" : "false") << '\n';
+        }
+        if (kind == ConfigFile::All || kind == ConfigFile::SaveData)
+            file << "session:\n  last_level: " << values.lastLevel << '\n';
         file.flush();
         if (!file) {
             diagnostics.push_back("Cannot save settings: " + path.string());
             return false;
         }
         return true;
+    }
+
+    bool ConfigStore::LoadFile(const std::filesystem::path &path, ConfigFile kind, bool optional) {
+        fileKind = kind;
+        const bool loaded = Load(path, optional);
+        fileKind = ConfigFile::All;
+        return loaded;
+    }
+
+    bool ConfigStore::SaveFile(const std::filesystem::path &path, ConfigFile kind) {
+        fileKind = kind;
+        const bool saved = Save(path);
+        fileKind = ConfigFile::All;
+        return saved;
+    }
+
+    std::filesystem::path ConfigStore::DefaultGamePath() {
+        return std::filesystem::path(GetApplicationDirectory()) / "game.yaml";
     }
 
     std::filesystem::path ConfigStore::DefaultSettingsPath() {

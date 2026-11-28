@@ -1,6 +1,7 @@
 #include "objects/bird.h"
 
 #include "engine/graphics/placeholder_art.h"
+#include "engine/collision/collision_system.h"
 
 #include <algorithm>
 #include <cmath>
@@ -78,8 +79,12 @@ namespace rage {
     }
 
     bool Bird::TryAttack(Rectangle playerBounds) {
+        return CollisionSystem::Overlaps(bounds, playerBounds) && OnContact();
+    }
+
+    bool Bird::OnContact() {
         const auto *patrol = std::get_if<PatrolFlight>(&flight);
-        if (!patrol || attackCooldown > 0 || !CheckCollisionRecs(bounds, playerBounds)) return false;
+        if (!patrol || attackCooldown > 0) return false;
         attackCooldown = 1;
         swooping = false;
         bounds.y = patrol->position.y;

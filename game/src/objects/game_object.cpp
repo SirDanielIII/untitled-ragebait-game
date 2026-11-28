@@ -81,7 +81,7 @@ namespace rage {
 
     Rectangle GameObject::CollisionBounds() const {
         const Vector2 collisionSize =
-            (definition.collisionSize.x > 0 && definition.collisionSize.y > 0)
+            (definition.collisionSize.x != 0 || definition.collisionSize.y != 0)
                 ? definition.collisionSize
                 : definition.size;
         return Rectangle{position.x + definition.collisionOffset.x,

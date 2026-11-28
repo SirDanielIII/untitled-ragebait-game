@@ -34,6 +34,7 @@ namespace rage {
         void Update(float dt, float levelSeconds, Rectangle playerBounds);
         // Patrol birds end their swoop on contact and can hit again after one second.
         bool TryAttack(Rectangle playerBounds);
+        bool OnContact(); // Response after shared collision detection.
         void SubmitSprites(RenderQueue &queue, const AssetManager &assets, float pixelsPerUnit) const;
 
         Rectangle Bounds() const { return bounds; }
