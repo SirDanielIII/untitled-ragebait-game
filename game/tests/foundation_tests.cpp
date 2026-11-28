@@ -54,6 +54,23 @@ InputFrame ClickSlider(const Game& session, ActionKind kind, float fraction)
     throw std::runtime_error("Requested slider is missing");
 }
 
+void TestMenuAccents()
+{
+    const auto levels = LevelSelectItems();
+    for (std::size_t i = 0; i < LevelCatalog().size(); ++i)
+        Check(ColorIsEqual(std::get<Button>(levels[i]).highlight, LevelCatalog()[i].accent), "Level focus must match its preview accent");
+    const auto main = MainMenuItems();
+    Check(ColorIsEqual(std::get<Button>(main.front()).highlight, theme::menuPlay), "Start focus accent changed");
+    Check(ColorIsEqual(std::get<Button>(main.back()).highlight, theme::danger), "Quit focus accent changed");
+    const auto settings = SettingsMenuItems(GameConfig{});
+    for (const auto &item : settings) {
+        if (const auto *slider = std::get_if<SliderItem>(&item))
+            Check(ColorIsEqual(slider->highlight, slider->action == ActionKind::SetTargetFps ? theme::menuDisplay : theme::menuAudio), "Slider accent must match its panel");
+        else if (const auto *button = std::get_if<Button>(&item); button && button->style == ButtonStyle::Checkbox)
+            Check(ColorIsEqual(button->highlight, button->fill), "Checkbox accent must match its panel");
+    }
+}
+
 void TestSliders()
 {
     const auto destination = CanvasDestination(960, 720);
@@ -509,7 +526,7 @@ void TestMenuRendering(Resources& resources)
         }
     }
     TestDirectory fixture;
-    const auto render = [&](Resources& res, ArtId menu, bool mainUi = false) {
+    const auto render = [&](Resources& res, std::string_view menu, bool mainUi = false) {
         const test::TestRenderTarget target;
         res.BeginFrame();
         res.SetViewport({0,0,canvasWidth,canvasHeight});
@@ -528,33 +545,109 @@ void TestMenuRendering(Resources& resources)
     };
     {
         Resources missing(fixture.path);
-        for (const auto menu : {ArtId::MainMenu, ArtId::Settings, ArtId::StageSelect, ArtId::Pause}) {
+        for (const auto menu : {"menu_main", "menu_settings", "menu_level_select", "menu_pause"}) {
             Image image = render(missing,menu);
             for (const auto point : {Vector2{5,5}, Vector2{800,450}, Vector2{1350,160}, Vector2{1590,890}})
                 Check(ColorIsEqual(GetImageColor(image,point.x,point.y),theme::background), "Default menu backdrop is not solid");
             UnloadImage(image);
         }
-        Image main = render(missing,ArtId::MainMenu,true);
+        Image main = render(missing,"menu_main",true);
         for (int y = 0; y < canvasHeight; y += 7) for (int x = 680; x < canvasWidth; x += 7)
             Check(ColorIsEqual(GetImageColor(main,x,y),theme::background), "Main menu right side is not clear for artwork");
         UnloadImage(main);
     }
-    const auto path = fixture.path / artPaths[static_cast<std::size_t>(ArtId::MainMenu)];
+    const auto csvPath = fixture.path / gameDataPath;
+    std::filesystem::create_directories(csvPath.parent_path());
+    {
+        std::ofstream csv(csvPath);
+        csv << "Animation ID,Asset ID,File Name,Frame Width (px),Frame Height (px),Frames,Frames per Row,FPS,Loops,Pivot,Faces,Layer,Notes\n";
+        csv << "menu_main_idle,menu_main,test_menu/custom_main.png,3840,2160,1,,,,centre,,UI,\n";
+    }
+    const auto path = fixture.path / "art/test_menu/custom_main.png";
     std::filesystem::create_directories(path.parent_path());
     const Color marker{25,112,173,255};
-    Image art = GenImageColor(16,9,marker);
+    Image art = GenImageColor(3840,2160,marker);
     const bool exported = ExportImage(art,path.string().c_str());
     UnloadImage(art);
     Check(exported,"Could not export main-menu background fixture");
     {
         Resources withArt(fixture.path);
-        Image main = render(withArt,ArtId::MainMenu,true);
+        Image main = render(withArt,"menu_main",true);
         Check(ColorIsEqual(GetImageColor(main,1200,450),marker) && ColorIsEqual(GetImageColor(main,20,20),marker),
               "Optional main-menu artwork does not cover the canvas");
         Check(!ColorIsEqual(GetImageColor(main,100,450),marker), "Main-menu buttons are behind the artwork");
         UnloadImage(main);
     }
-    std::cout << "PASS: centered native key glyphs, solid menu defaults and optional main-menu art\n";
+    const auto renderMenu = [](Resources &res, bool paused, int selected) {
+        const test::TestRenderTarget target;
+        res.BeginFrame();
+        res.SetViewport({0, 0, canvasWidth, canvasHeight});
+        BeginTextureMode(target.target);
+        ClearBackground(RED);
+        if (paused) DrawPauseMenu(res, Level0Definition());
+        else DrawLevelSelect(res, selected);
+        EndTextureMode();
+        Image result = LoadImageFromTexture(target.target.texture);
+        ImageFlipVertical(&result);
+        return result;
+    };
+    {
+        Resources missing(fixture.path);
+        Image pause = renderMenu(missing, true, 0);
+        Check(ColorIsEqual(GetImageColor(pause, 1100, 450), theme::background) &&
+              ColorIsEqual(GetImageColor(pause, 100, 855), theme::background),
+              "Pause menu retained unwanted illustration or footer");
+        UnloadImage(pause);
+        Image select = renderMenu(missing, false, 0);
+        Check(ColorIsEqual(GetImageColor(select, 1100, 550), theme::background) &&
+              ColorIsEqual(GetImageColor(select, 850, 550), theme::panel) &&
+              ColorIsEqual(GetImageColor(select, 100, 855), theme::background),
+              "Level select preview placeholder or footer is incorrect");
+        UnloadImage(select);
+    }
+    const auto exportSlot = [&](std::string_view id, int width, int height, Color color) {
+        const std::string file = "test_menu/" + std::string(id) + ".png";
+        std::ofstream csv(csvPath, std::ios::app);
+        csv << id << "_idle," << id << ',' << file << ',' << width << ',' << height
+            << ",1,,,,centre,,UI,\n";
+        const auto slot = fixture.path / "art" / file;
+        std::filesystem::create_directories(slot.parent_path());
+        Image image = GenImageColor(width, height, color);
+        const bool ok = ExportImage(image, slot.string().c_str());
+        UnloadImage(image);
+        Check(ok, "Could not export optional menu-art fixture");
+    };
+    const std::array<std::string_view, 4> previewIds{"menu_preview_level_0", "menu_preview_level_1",
+                                         "menu_preview_level_2", "menu_preview_level_3"};
+    const std::array<Color, 4> previewColors{GREEN, BLUE, ORANGE, PURPLE};
+    for (std::size_t i = 0; i < previewIds.size(); ++i)
+        exportSlot(previewIds[i], 1920, 1080, previewColors[i]);
+    exportSlot("menu_pause_sprite", 1920, 1440, marker);
+    {
+        Resources withArt(fixture.path);
+        for (int i = 0; i < static_cast<int>(previewIds.size()); ++i) {
+            Image select = renderMenu(withArt, false, i);
+            Check(ColorIsEqual(GetImageColor(select, 1100, 550), previewColors[i]),
+                  "Selected level did not display its corresponding preview");
+            Check(ColorIsEqual(GetImageColor(select, 870, 405), previewColors[i]) &&
+                  ColorIsEqual(GetImageColor(select, 1440, 720), previewColors[i]) &&
+                  ColorIsEqual(GetImageColor(select, 850, 550), theme::panel),
+                  "High-resolution CSV preview did not fit its slot");
+            UnloadImage(select);
+        }
+        Image back = renderMenu(withArt, false, static_cast<int>(previewIds.size()));
+        Check(ColorIsEqual(GetImageColor(back, 1100, 550), theme::panel), "Back displayed an unrelated level preview");
+        UnloadImage(back);
+        Image pause = renderMenu(withArt, true, 0);
+        Check(ColorIsEqual(GetImageColor(pause, 1100, 450), marker) &&
+              ColorIsEqual(GetImageColor(pause, 750, 450), theme::background),
+              "Pause illustration is missing or extends into the buttons");
+        Check(ColorIsEqual(GetImageColor(pause, 825, 230), marker) &&
+              ColorIsEqual(GetImageColor(pause, 1505, 450), theme::background),
+              "High-resolution CSV pause art escaped its slot");
+        UnloadImage(pause);
+    }
+    std::cout << "PASS: centered native key glyphs, solid menu defaults and optional menu art\n";
 }
 
 // Render the same game state at many framebuffer sizes, including non-16:9.
@@ -683,6 +776,7 @@ int RunSelfTests()
     run("crouch jumps", TestCrouchJumps);
     run("player health", TestPlayerHealth);
     run("sliders", TestSliders);
+    run("menu accents", TestMenuAccents);
     run("session", TestSession);
     run("level authoring", TestLevelAuthoring);
     run("events", TestEventManager);

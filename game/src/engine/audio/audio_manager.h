@@ -106,6 +106,7 @@ namespace rage {
             float target = 1;  // Fade level it is moving toward.
             float speed = 0;   // Fade change per second; 0 means jump straight to the target.
             bool valid = false;
+            float appliedVolume = -1; // Unset until the first volume reaches this stream.
         };
 
         std::filesystem::path Resolve(const SoundData &sound, const std::string &file) const;

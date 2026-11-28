@@ -1,6 +1,7 @@
 #include "engine/graphics/placeholder_art.h"
 #include "ui/theme.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace rage::art {
@@ -84,11 +85,27 @@ namespace rage::art {
         }
     }
 
-    void MenuBackdrop(const Resources &resources, ArtId screen) {
+    bool DrawMenuArt(const Resources &resources, std::string_view assetId, Rectangle bounds) {
+        const auto &assets = resources.Assets();
+        const auto *image = assets.Find(assetId, "idle");
+        if (!image || !assets.HasTexture(*image)) return false;
+        // UI art may be much larger than its logical slot. Unlike world-sprite
+        // FitScale, this must allow fractional downscaling to keep it inside.
+        const float scale = std::min(bounds.width / image->frameWidth, bounds.height / image->frameHeight);
+        const float width = image->frameWidth * scale;
+        const float height = image->frameHeight * scale;
+        float pivotX = 0, pivotY = 0;
+        PivotOffset(image->pivot, width, height, pivotX, pivotY);
+        const Vector2 position{bounds.x + (bounds.width - width) / 2 + pivotX,
+                               bounds.y + (bounds.height - height) / 2 + pivotY};
+        return assets.Draw(*image, 0, position, Facing::None, {}, scale) == DrawResult::Texture;
+    }
+
+    void MenuBackdrop(const Resources &resources, std::string_view assetId) {
         // ClearBackground would also erase the native framebuffer letterbox.
         // Opaque solid color is the default for every menu. Optional artwork
         // sits behind the UI; transparent areas retain the same solid color.
         DrawRectangle(0, 0, canvasWidth, canvasHeight, theme::background);
-        resources.DrawArt(screen, {0, 0, canvasWidth, canvasHeight}, ArtFit::Stretch);
+        DrawMenuArt(resources, assetId, {0, 0, canvasWidth, canvasHeight});
     }
 }

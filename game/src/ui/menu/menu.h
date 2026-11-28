@@ -2,6 +2,7 @@
 
 #include "engine/input/input.h"
 #include "ui/slider/slider.h"
+#include "ui/theme.h"
 #include "raylib.h"
 #include "engine/resources/resources.h"
 #include <optional>
@@ -31,6 +32,7 @@ namespace rage {
         ButtonStyle style = ButtonStyle::Filled;
         bool checked = false;
         float fontSize = 28.0f;
+        Color highlight = theme::mint;
     };
 
     struct SliderItem {
@@ -40,6 +42,7 @@ namespace rage {
         std::string unit;
         float displayScale = 1.0f;
         std::string zeroText;
+        Color highlight = theme::mint;
     };
 
     using MenuItem = std::variant<Button, SliderItem>;

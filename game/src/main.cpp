@@ -204,7 +204,9 @@ namespace rage {
         // The viewport replaces Raylib's window-DPI modelview. Physical already
         // includes DPI, so applying the original window scale again would double it.
         const ScopedModelview viewport(ViewportMatrix(physical));
-        DrawRectangle(0, 0, canvasWidth, canvasHeight, Color{19, 25, 39, 255});
+        // Menus already paint an opaque canvas; avoid drawing a covered full-screen rectangle.
+        if (screen == ScreenId::Playing || (screen == ScreenId::Paused && !activeLevel))
+            DrawRectangle(0, 0, canvasWidth, canvasHeight, Color{19, 25, 39, 255});
         DrawScene(resources);
         DrawUi(resources);
         if (config.showFps) resources.DrawText(TextFormat("%d FPS", GetFPS()), {1410, 18}, 20, 1, RAYWHITE);

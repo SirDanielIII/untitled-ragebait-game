@@ -17,19 +17,19 @@ Number levels consistently across folders, files, IDs, classes, definitions and 
 ## Keep related code together
 
 - `main.cpp` is the level handler. Put level registration, screen transitions and the frame loop there; `game.h` declares its state.
-- A playable level gets its own numbered folder. Keep its layout, update hooks and factory in `level_<number>.cpp`. For levels with scripted events, declare the class and its state in `level_<number>.h` and define its event list in `level_<number>_events.cpp`. Shared behavior belongs in `levels/level.*`.
+- A playable level gets its own numbered folder. Keep its layout, update hooks and factory in `level_<number>.cpp`. For levels with scripted events, declare the class and its state in `level_<number>.h` and define its event list in `level_<number>_events.cpp`. Keep object-to-Asset-ID mappings in `level_<number>_sprites.cpp`; do not scatter sprite filenames through gameplay code. Shared behavior belongs in `levels/level.*`.
 - Put source/header pairs together in a feature folder: `player/player.*`, `ui/dialogue/dialogue.*`, `engine/window/game_window.*`.
 - Keep menu layouts in `ui/menus/`; shared menu controls, sliders, dialogue and text each have their own folder under `ui/`. `ui/theme.h` contains shared colors.
 - `player/` owns movement; `engine/collision/` owns shared collision detection, resolution and contacts. `engine/` groups `window/`, `config/`, `input/`, `resources/` and `graphics/` support.
 - Include paths start at `game/src`, for example `#include "ui/dialogue/dialogue.h"`.
 - `src/CMakeLists.txt` recursively discovers `.cpp`, `.h` and `.hpp` files. Add or remove files and build normally; no manual source list is needed. Keep scratch programs out of feature folders.
 - Tests live in `game/tests/`; their `.cpp` files are also discovered recursively and provide the existing `--self-test` / `--smoke-test` commands.
-- Runtime assets go under `game/resources/`; original artwork goes under root `assets/`. Build output stays under `build/`.
+- Runtime assets go under `game/resources/`; original artwork goes under root `assets/`. New menu and world sprites use Game Data Asset IDs, with the master sheet exported to `game/resources/data/game_data.csv`. Commit the export with matching PNGs. Build output stays under `build/`.
 
 ## Runtime rules
 
 Pass frame time in seconds. Levels implement `OnReset`, `OnUpdate` and optional `DrawWorld`; the central handler owns the loop and the window lifetime. Store level event state as class members so restart clears it and separate levels do not share it.
 
-Use the shared text/clip helpers for UI so rendering and mouse hit testing agree at different window sizes. Keep screen navigation in `main.cpp` and menu appearance in `ui/menus/menus.cpp`.
+Use the shared text/clip helpers for UI so rendering and mouse hit testing agree at different window sizes. Draw in the 1600×900 logical coordinate system and preserve the native framebuffer viewport; do not introduce a fixed-resolution world render target. Keep collision shapes independent of visual bounds and debug drawing. Keep screen navigation in `main.cpp` and menu appearance in `ui/menus/menus.cpp`.
 
 See the [code guide](../docs/CODE_GUIDE.md) and [level guide](../docs/LEVEL_AUTHORING.md) for examples and verification commands.

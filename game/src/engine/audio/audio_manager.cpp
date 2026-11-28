@@ -199,8 +199,11 @@ namespace rage {
 
     void AudioManager::ApplyMusicVolume(Track &track) {
         if (!track.valid) return;
-        const float level = track.rowVolume * musicVolume * track.fade * (paused ? pausedMusicLevel : 1.0f);
-        SetMusicVolume(track.music, std::clamp(level, 0.0f, 1.0f));
+        const float level = std::clamp(track.rowVolume * musicVolume * track.fade *
+                                       (paused ? pausedMusicLevel : 1.0f), 0.0f, 1.0f);
+        if (level == track.appliedVolume) return;
+        SetMusicVolume(track.music, level);
+        track.appliedVolume = level;
     }
 
     void AudioManager::Update(float dt) {

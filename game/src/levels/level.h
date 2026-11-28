@@ -126,8 +126,9 @@ namespace rage {
         void Restart();
         // Scripted animation supplies geometry/identity; detection and entry tracking
         // still use the shared system. Call each frame while the shape exists.
+        // obstacleSensor marks a non-blocking obstacle for the debug overlay only.
         bool ScriptContact(const std::string &id, Rectangle bounds, CollisionType type = CollisionType::Hazard,
-                           bool enabled = true);
+                           bool enabled = true, bool obstacleSensor = false);
 
         EventManager &Events() { return events; }
         Player &MutablePlayer() { return player; }
@@ -209,6 +210,7 @@ namespace rage {
         const LevelDefinition &definition;
         Player player;
         JumpParticles jumpParticles;
+        mutable RenderQueue renderQueue; // Flush empties jobs but retains per-layer storage.
         DialogueBox dialogue;
         Camera2D camera = {};
         DialogueCue currentCue;

@@ -65,7 +65,7 @@ namespace rage {
                                                   ? slider->zeroText
                                                   : std::to_string(static_cast<int>(std::round(slider->slider.Value() * slider->displayScale))) + slider->unit;
                 DrawTextFit(resources, valueText, {bounds.x, bounds.y - 52, bounds.width, 30}, 26, RAYWHITE);
-                slider->slider.Draw(focused);
+                slider->slider.Draw(focused, slider->highlight);
                 continue;
             }
             const auto &button = std::get<Button>(items[i]);
@@ -79,7 +79,8 @@ namespace rage {
             if (button.style == ButtonStyle::Checkbox) {
                 const Rectangle box = {bounds.x, bounds.y + (bounds.height - 48) / 2, 48, 48};
                 DrawRectangleRec(box, button.checked ? button.fill : theme::background);
-                DrawRectangleLinesEx(box, 2.0f, focused ? theme::gold : theme::border);
+                DrawRectangleLinesEx(box, 2.0f, theme::border);
+                if (focused) DrawRectangleLinesEx({box.x - 4, box.y - 4, box.width + 8, box.height + 8}, 2.0f, button.highlight);
                 if (button.checked) {
                     DrawLineEx({box.x + 11, box.y + 24}, {box.x + 21, box.y + 34}, 4, theme::background);
                     DrawLineEx({box.x + 21, box.y + 34}, {box.x + 38, box.y + 14}, 4, theme::background);
@@ -89,8 +90,8 @@ namespace rage {
                 continue;
             }
             if (!resources.DrawArt(ArtId::Button, bounds, ArtFit::Stretch)) DrawRectangleRec(bounds, button.fill);
-            DrawRectangleLinesEx(bounds, focused ? 3.0f : 1.0f, focused ? theme::mint : theme::border);
-            if (focused) DrawRectangle(static_cast<int>(bounds.x), static_cast<int>(bounds.y), 6, static_cast<int>(bounds.height), theme::mint);
+            DrawRectangleLinesEx(bounds, focused ? 3.0f : 1.0f, focused ? button.highlight : theme::border);
+            if (focused) DrawRectangle(static_cast<int>(bounds.x), static_cast<int>(bounds.y), 6, static_cast<int>(bounds.height), button.highlight);
             float fit = button.fontSize;
             Vector2 size = resources.MeasureText(button.label, fit, 1);
             while (fit > 10 && size.x > bounds.width - 30) {

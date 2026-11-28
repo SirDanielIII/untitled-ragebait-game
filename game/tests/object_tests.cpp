@@ -112,6 +112,21 @@ void TestManagerAndObjects() {
     Check(manager.Remove("small-hitbox") && manager.Get("small-hitbox") == nullptr,
           "Remove did not delete the object");
     Check(!manager.Remove("missing"), "Remove reported success for a missing id");
+    // Snapshots must be refreshed every step, including when an ID is removed and reused.
+    auto *probe = manager.Create(StaticDefinition("snapshot-probe", 10, 300, 10, 10));
+    manager.UpdateAll(0);
+    probe->SetPosition({20, 300});
+    manager.UpdateAll(0);
+    probe->SetPosition({30, 300});
+    auto snapshot = manager.Colliders();
+    Check(snapshot.back().previous.x == 20 && snapshot.back().bounds.x == 30,
+          "Reused snapshot did not capture the latest pre-step bounds");
+    Check(manager.Remove("snapshot-probe"), "Could not remove snapshot probe");
+    manager.UpdateAll(0);
+    manager.Create(StaticDefinition("snapshot-probe", 80, 300, 10, 10));
+    snapshot = manager.Colliders();
+    Check(snapshot.back().previous.x == 80 && snapshot.back().bounds.x == 80,
+          "A respawned ID inherited a removed object's old snapshot");
     manager.ResetAll();
     Check(platform->Position().x == 0, "ResetAll did not reset the objects");
     manager.Clear();

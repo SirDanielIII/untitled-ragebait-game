@@ -24,6 +24,14 @@ namespace rage {
         Rectangle previous{};
         CollisionType type = CollisionType::Solid;
         CollisionFilter filter{collisionLayers::environment, collisionLayers::all};
+        // Some non-blocking contacts (birds) are physical obstacles, unlike ordinary triggers.
+        bool obstacleSensor = false;
+
+        bool IsDebugObstacle() const {
+            return bounds.width > 0 && bounds.height > 0 &&
+                   (type == CollisionType::Solid || type == CollisionType::OneWay ||
+                    type == CollisionType::Hazard || (type == CollisionType::Trigger && obstacleSensor));
+        }
     };
     struct CollisionContact {
         std::string objectId;

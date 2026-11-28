@@ -179,6 +179,11 @@ void TestFramesAndPlayback()
     queue.Submit(Layer::Middle, [&] { order.push_back(22); });
     queue.Flush();
     Check(order == std::vector<int>{1, 2, 22, 3, 4} && queue.Size() == 0, "Layer order failed");
+    order.clear();
+    queue.Submit(Layer::Foreground, [&] { order.push_back(3); });
+    queue.Submit(Layer::Background, [&] { order.push_back(1); });
+    queue.Flush();
+    Check(order == std::vector<int>{1, 3} && queue.Size() == 0, "Reused queue replayed an old job or changed layer order");
 }
 
 void TestPlayerAnimationState()

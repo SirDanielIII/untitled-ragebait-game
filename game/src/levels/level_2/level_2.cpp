@@ -133,7 +133,7 @@ namespace rage {
         for (auto& bird : birds) {
             bird.Update(dt, ElapsedSeconds(), playerBounds);
             const Rectangle bounds = bird.Bounds();
-            if (ScriptContact("patrol-bird-" + std::to_string(&bird - birds.data()), bounds, CollisionType::Trigger) && bird.OnContact()) {
+            if (ScriptContact("patrol-bird-" + std::to_string(&bird - birds.data()), bounds, CollisionType::Trigger, true, true) && bird.OnContact()) {
                 const float playerCenter = playerBounds.x + playerBounds.width / 2.0f;
                 const float birdCenter = bounds.x + bounds.width / 2.0f;
                 const float direction = playerCenter < birdCenter ? -1.0f : 1.0f;

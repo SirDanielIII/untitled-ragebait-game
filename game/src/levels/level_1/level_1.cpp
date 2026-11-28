@@ -704,7 +704,7 @@ namespace rage {
             .title = "Level 1",
             .description = "Sidewalk -> road -> telephone poles -> clouds -> rainbow -> campus",
             .plannedContent = "Jump sidewalk obstacles, dodge right-to-left traffic and its chicken pile-up, "
-                              "dodge birds on the poles, cross live wires, duck flying pigs (hold S), "
+                              "dodge birds on the poles, cross live wires, duck flying pigs (hold S or Shift), "
                               "dodge falling stars, then ride the rainbow to campus.",
             .intro = {
                 .text = "The school is right down the road. Just keep walking.\n"
@@ -1125,7 +1125,7 @@ namespace rage {
         birdCooldown = std::max(0.0f, birdCooldown - dt);
         for (const auto& bird : birds) {
             const Rectangle b = bird.Bounds();
-            if (ScriptContact("pole-bird-" + std::to_string(&bird - birds.data()), b, CollisionType::Trigger, birdCooldown == 0)) {
+            if (ScriptContact("pole-bird-" + std::to_string(&bird - birds.data()), b, CollisionType::Trigger, birdCooldown == 0, true)) {
                 const bool left = player.x + player.width / 2 < b.x + b.width / 2;
                 MutablePlayer().Bounce({left ? -390.0f : 390.0f, -315.0f});
                 birdCooldown = 0.6f;

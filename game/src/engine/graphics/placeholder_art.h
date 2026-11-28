@@ -3,7 +3,11 @@
 
 namespace rage::art {
     // Optional menu image over an opaque solid-color background.
-    void MenuBackdrop(const Resources &resources, ArtId screen);
+    void MenuBackdrop(const Resources &resources, std::string_view assetId);
+
+    // Draw a CSV-defined static menu image, contained in the logical slot.
+    // Missing rows/textures return false without drawing a debug placeholder.
+    bool DrawMenuArt(const Resources &resources, std::string_view assetId, Rectangle bounds);
 
     void Student(const Resources &resources, Rectangle bounds);
 
