@@ -290,6 +290,20 @@ void TestLevel1ArtObjects() {
     level->Update(0.5f, {}, config);
     Check(level->Objects().Get("car-1")->Position().x < carStartX, "Car art did not follow the scripted traffic");
 }
+void TestLevel2Birds() {
+    // Birds are objects, first in the list, and follow their birds.
+    GameConfig config;
+    auto level = CreateLevel(LevelId::Level2, config);
+    const auto &objects = level->Objects().Objects();
+    Check(objects.size() > 10 && objects.front()->Id() == "bird-1" && objects[9]->Id() == "bird-10" &&
+              objects.front()->HasStandIn() && objects.front()->AssetId() == "bird" &&
+              objects.front()->Collision() == CollisionType::None,
+          "Level 2's birds are missing, not first, or have no drawing or Asset ID");
+    level->Reset(config);
+    const float startX = level->Objects().Get("bird-1")->Position().x;
+    level->Update(0.25f, {}, config);
+    Check(level->Objects().Get("bird-1")->Position().x != startX, "Bird art did not follow its bird");
+}
 }  // namespace
 
 void TestObjects() {
@@ -299,7 +313,8 @@ void TestObjects() {
     TestShortcuts();
     TestSpriteAssignments();
     TestLevel1ArtObjects();
+    TestLevel2Birds();
     std::cout << "PASS: game objects, manager, AssetManager placeholders, EventManager notifications, "
-                 "hazards, checkpoints, level completion, shortcuts, sprites files, stand-ins and Level 1's things\n";
+                 "hazards, checkpoints, level completion, shortcuts, sprites files, stand-ins, Level 1's things and Level 2's birds\n";
 }
 }  // namespace rage

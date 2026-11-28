@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <utility>
 
 namespace rage {
@@ -18,6 +19,18 @@ namespace rage {
         constexpr float SWOOP_DISTANCE = 100.0f;
         constexpr float KNOCKBACK_X = 420.0f;
         constexpr float KNOCKBACK_Y = -280.0f;
+        constexpr std::size_t birdCount = 10;
+
+        std::string BirdId(std::size_t index) { return "bird-" + std::to_string(index + 1); }
+
+        // Birds first, so they draw behind the platforms.
+        std::vector<GameObjectDefinition> WithBirds(std::vector<GameObjectDefinition> objects) {
+            std::vector<GameObjectDefinition> all;
+            for (std::size_t i = 0; i < birdCount; ++i)
+                all.push_back(ArtObject(BirdId(i).c_str(), {0, 0, BIRD_WIDTH, BIRD_HEIGHT}, ""));
+            all.insert(all.end(), objects.begin(), objects.end());
+            return all;
+        }
     }
 
     const LevelDefinition &Level2Definition() {
@@ -40,7 +53,7 @@ namespace rage {
             .world = {0, -120, 1000, 1570},
             .spawn = {180, 1406},
 
-            .objects = {
+            .objects = WithBirds({
                 // STREET LEVEL
                 {.id = "floor", .type = ObjectType::Static, .collision = CollisionType::Solid,
                  .position = {0, 1450}, .size = {1000, 50}, .assetId = "platform"},
@@ -113,7 +126,7 @@ namespace rage {
 
                 {.id = "rooftop", .type = ObjectType::Static, .collision = CollisionType::Solid,
                  .position = {350, 70}, .size = {200, 30}, .assetId = "platform"},
-            },
+            }),
             // Asset IDs for the objects above: level_2_sprites.cpp.
             .sprites = Level2Sprites(),
         };
@@ -124,6 +137,20 @@ namespace rage {
     Level2::Level2() : Level(Level2Definition()) {
         for (auto &event : CreateEvents()) {
             Events().RegisterEvent(std::move(event));
+        }
+        static_assert(std::tuple_size_v<decltype(birds)> == birdCount);
+        for (std::size_t i = 0; i < birdCount; ++i)
+            SetStandIn(BirdId(i), [this, i](Rectangle) { DrawBird(birds[i]); });
+    }
+
+    void Level2::SyncObjects() {
+        for (std::size_t i = 0; i < birds.size(); ++i) {
+            const Bird &bird = birds[i];
+            PlaceObject(BirdId(i), bird.bounds);
+            if (auto *object = Objects().Get(BirdId(i))) {
+                object->SetFacing(bird.facingRight ? Facing::Right : Facing::Left);
+                object->SetState(bird.swooping ? "swoop" : "idle");
+            }
         }
     }
 
@@ -180,6 +207,7 @@ namespace rage {
              240.0f, 500.0f, 900.0f, 180.0f,
              3.5f, 0.0f, 0.0f, false, false}
         }};
+        SyncObjects();
     }
 
     void Level2::OnUpdate(float dt, const InputFrame &) {
@@ -259,44 +287,43 @@ namespace rage {
                 bird.bounds.y = bird.homeY;
             }
         }
+        SyncObjects();
     }
 
-    void Level2::DrawWorld(const Resources &) const {
-        for (const auto &bird : birds) {
-            const float centerX = bird.bounds.x + bird.bounds.width / 2.0f;
-            const float centerY = bird.bounds.y + bird.bounds.height / 2.0f;
+    void Level2::DrawBird(const Bird &bird) {
+        const float centerX = bird.bounds.x + bird.bounds.width / 2.0f;
+        const float centerY = bird.bounds.y + bird.bounds.height / 2.0f;
 
-            // Body and head.
-            DrawEllipse(static_cast<int>(centerX),
-                        static_cast<int>(centerY),
-                        16.0f, 9.0f, DARKGRAY);
+        // Body and head.
+        DrawEllipse(static_cast<int>(centerX),
+                    static_cast<int>(centerY),
+                    16.0f, 9.0f, DARKGRAY);
 
-            DrawCircle(static_cast<int>(centerX + (bird.facingRight ? 12 : -12)),
-                       static_cast<int>(centerY - 5),
-                       6.0f, BLACK);
+        DrawCircle(static_cast<int>(centerX + (bird.facingRight ? 12 : -12)),
+                   static_cast<int>(centerY - 5),
+                   6.0f, BLACK);
 
-            // Beak.
-            if (bird.facingRight) {
-                DrawTriangle(
-                    {centerX + 17, centerY - 6},
-                    {centerX + 27, centerY - 3},
-                    {centerX + 17, centerY},
-                    ORANGE
-                );
-            } else {
-                DrawTriangle(
-                    {centerX - 17, centerY - 6},
-                    {centerX - 27, centerY - 3},
-                    {centerX - 17, centerY},
-                    ORANGE
-                );
-            }
-
-            // Wing.
-            DrawEllipse(static_cast<int>(centerX),
-                        static_cast<int>(centerY - 5),
-                        10.0f, 4.0f, GRAY);
+        // Beak.
+        if (bird.facingRight) {
+            DrawTriangle(
+                {centerX + 17, centerY - 6},
+                {centerX + 27, centerY - 3},
+                {centerX + 17, centerY},
+                ORANGE
+            );
+        } else {
+            DrawTriangle(
+                {centerX - 17, centerY - 6},
+                {centerX - 27, centerY - 3},
+                {centerX - 17, centerY},
+                ORANGE
+            );
         }
+
+        // Wing.
+        DrawEllipse(static_cast<int>(centerX),
+                    static_cast<int>(centerY - 5),
+                    10.0f, 4.0f, GRAY);
     }
 
     std::unique_ptr<Level> MakeLevel2() {

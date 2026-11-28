@@ -28,7 +28,9 @@ namespace rage {
 
         void OnReset() override;
         void OnUpdate(float dt, const InputFrame& input) override;
-        void DrawWorld(const Resources& resources) const override;
+        // Keeps each bird object on its bird.
+        void SyncObjects();
+        static void DrawBird(const Bird& bird);
 
         std::vector<Event> CreateEvents();
 
