@@ -189,6 +189,23 @@ namespace rage {
         void SetVisible(bool value) { visible = value; }
         bool IsTriggered() const { return triggered; }
 
+        // The Game Data Asset ID. Levels assign these in their sprites file
+        // (level_<n>_sprites.cpp); Level applies them when the level loads.
+        void SetAssetId(std::string assetId) { definition.assetId = std::move(assetId); }
+        // The level's own drawing of this object, given the object's box. It is drawn
+        // instead of a sprite until the object's Asset ID has a Game Data row.
+        void SetStandIn(std::function<void(Rectangle bounds)> draw) { standIn = std::move(draw); }
+        bool HasStandIn() const { return static_cast<bool>(standIn); }
+        // Which way the object faces now; the sprite is mirrored when this is the
+        // opposite of its row's Faces value.
+        void SetFacing(Facing value) { facing = value; }
+        // Shows the animation `seconds` into its current state, for effects the level
+        // times itself (a puff's age), so they start from their first frame.
+        void SetAnimationTime(double seconds) {
+            animator.Restart();
+            animator.Update(static_cast<float>(seconds));
+        }
+
     protected:
         GameObjectDefinition definition;
         Vector2 position;
@@ -200,5 +217,7 @@ namespace rage {
         bool actionCompleted = false;
         Vector2 initialPosition;
         Vector2 initialVelocity;
+        std::function<void(Rectangle)> standIn;
+        Facing facing = Facing::None;
     };
 }

@@ -114,6 +114,8 @@ namespace rage {
                 {.id = "rooftop", .type = ObjectType::Static, .collision = CollisionType::Solid,
                  .position = {350, 70}, .size = {200, 30}, .assetId = "platform"},
             },
+            // Asset IDs for the objects above: level_2_sprites.cpp.
+            .sprites = Level2Sprites(),
         };
 
         return definition;

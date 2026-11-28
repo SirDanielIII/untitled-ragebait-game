@@ -18,6 +18,25 @@ namespace rage {
         for (const auto &objectDefinition : definition.objects) {
             objects.Create(objectDefinition);
         }
+        // The level's sprites file assigns Asset IDs to its objects by name. A name ending
+        // in '*' covers every object whose id starts with the rest ("car-*"); later lines
+        // win, so one object can be given different art after its group.
+        for (const auto &sprite : definition.sprites) {
+            const bool group = !sprite.thing.empty() && sprite.thing.back() == '*';
+            const std::string_view prefix(sprite.thing.data(), sprite.thing.size() - (group ? 1 : 0));
+            int matched = 0;
+            for (const auto &object : objects.Objects()) {
+                const std::string_view id = object->Id();
+                if (group ? id.starts_with(prefix) : id == prefix) {
+                    object->SetAssetId(sprite.assetId);
+                    ++matched;
+                }
+            }
+            if (matched == 0) {
+                TraceLog(LOG_WARNING, "Sprites: %s has no object named \"%s\" (Asset ID \"%s\")",
+                         definition.title, sprite.thing.c_str(), sprite.assetId.c_str());
+            }
+        }
         respawnPoint = definition.spawn;
     }
 
@@ -223,6 +242,20 @@ namespace rage {
         return requests;
     }
 
+    bool Level::SetStandIn(const std::string &id, std::function<void(Rectangle bounds)> draw) {
+        auto *object = objects.Get(id);
+        if (!object) return false;
+        object->SetStandIn(std::move(draw));
+        return true;
+    }
+
+    bool Level::PlaceObject(const std::string &id, Rectangle bounds) {
+        auto *object = objects.Get(id);
+        if (!object) return false;
+        object->SetPosition({bounds.x, bounds.y});
+        return true;
+    }
+
     std::string Level::MusicTrack() const {
         return "level_" + std::to_string(static_cast<int>(definition.id)) + "_theme";
     }
@@ -330,6 +363,9 @@ namespace rage {
             DrawWorld(resources);
         });
         SubmitSprites(queue, resources);
+        queue.Submit(Layer::Middle, [&] {
+            DrawWorldFront(resources);
+        });
         SubmitPlayer(queue, resources);
         queue.Flush();
         // Drawn after the queue flushes, still inside the camera

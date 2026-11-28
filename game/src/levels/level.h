@@ -8,6 +8,8 @@
 #include "objects/object_manager.h"
 #include <vector>
 #include <string>
+#include <functional>
+#include <string_view>
 #include "player/player.h"
 #include "ui/dialogue/dialogue.h"
 #include "engine/resources/resources.h"
@@ -50,6 +52,14 @@ namespace rage {
     enum class DialoguePolicy { WhenAvailable, Interrupt };
 
     // Content is data; behavior belongs in the corresponding Level subclass.
+    // One line of a level's sprites file: the object named `thing` is drawn with the
+    // Game Data sprite whose Asset ID is `assetId`. A `thing` ending in '*' names every
+    // object starting with the rest ("car-*"). See level_<n>/level_<n>_sprites.cpp.
+    struct SpriteAssignment {
+        std::string thing;
+        std::string assetId;
+    };
+
     struct LevelDefinition {
         LevelId id;
         const char *title;
@@ -65,6 +75,9 @@ namespace rage {
         // collision geometry comes from these, not from artwork.
         // (Previously a list of platform rectangles; see objects/.)
         std::vector<GameObjectDefinition> objects;
+        // Asset IDs for the objects above, from the level's sprites file. These
+        // replace an object's own .assetId when the level loads.
+        std::vector<SpriteAssignment> sprites;
     };
 
     class Level {
@@ -113,6 +126,13 @@ namespace rage {
         bool DeactivateObject(const std::string &id);
         bool StartObjectFall(const std::string &id);
         GameObject *SpawnObject(const GameObjectDefinition &definition) { return objects.Spawn(definition); }
+        // Moves object `id` so its box's top-left is at the top-left of `bounds`. Used to keep
+        // an art-only object on a hitbox the level's own script moves (see Level 1's
+        // SyncObjects). Returns false when there is no object with that id.
+        bool PlaceObject(const std::string &id, Rectangle bounds);
+        // Gives object `id` the level's own drawing, used until its sprite exists in Game
+        // Data. `draw` gets the object's box. Call it in the level's constructor.
+        bool SetStandIn(const std::string &id, std::function<void(Rectangle bounds)> draw);
         bool RemoveObject(const std::string &id) { return objects.Remove(id); }
         bool CanSay() const;
         // Returns 0 if busy. Use CanSay in polling event conditions to retry.
@@ -133,7 +153,13 @@ namespace rage {
         virtual void OnUpdate(float, const InputFrame &) {
         }
 
+        // Drawing happens in this order: DrawWorld, then the sprites of the level's objects,
+        // then DrawWorldFront, then the player. Put scenery that must cover object sprites,
+        // such as a tunnel wall that hides cars, in DrawWorldFront; the player stays in front.
         virtual void DrawWorld(const Resources &) const {
+        }
+
+        virtual void DrawWorldFront(const Resources &) const {
         }
 
         virtual void DrawHud(const Resources &) const {

@@ -19,7 +19,8 @@ The short version. Each step links to the details below.
 3. **Export the CSV:** File → Download → Comma-separated values, rename it `game_data.csv`, and replace `game/resources/data/game_data.csv`. [Details](#3-get-it-into-the-game)
 4. **Put it in the game:**
    - **The player:** Asset ID `player_character` with `player_idle`, `player_walk`, `player_jump`, `player_fall`. No code. [Details](#4-player-art)
-   - **Anything in a level:** add one line to the level's `.objects` list in `game/src/levels/level_<n>/level_<n>.cpp`. The last argument is the Asset ID:
+   - **Something already in a level:** open the level's sprites file, `game/src/levels/level_<n>/level_<n>_sprites.cpp`. It lists every thing in that level with its Asset ID and size, grouped by area. Add a Game Data row with that Asset ID (or change the Asset ID on its line). No other code. [Details](#sprites-files-one-list-per-level)
+   - **Something new in a level:** add one line to the level's `.objects` list in `game/src/levels/level_<n>/level_<n>.cpp`, then give it a line in the sprites file. The last argument is the Asset ID:
      ```cpp
      SolidPlatform("desk-1", {600, 586, 64, 64}, "school_desk"),   // the player can stand on it
      ArtObject("poster-1", {800, 400, 64, 96}, "poster"),          // art only, the player walks past
@@ -129,7 +130,8 @@ Each level's code is in `game/src/levels/level_<number>/level_<number>.cpp`. Pic
 | The thing... | Use | Drawing code needed |
 |---|---|---|
 | sits there, collides or is a hazard (platform, furniture, trash can) | an entry in `.objects` with an `.assetId` | none |
-| is moved or checked by the level's own script (Level 1's trash can and hydrant) | an `ArtObject` in `.objects`, moved onto the script's hitbox if it moves | none if it stays still; one `SetPosition` line if it moves |
+| is moved or checked by the level's own script (Level 1's cars, birds, trash can) | an `ArtObject` in `.objects`, kept on the script's hitbox | none if it stays still; one `PlaceObject` line if it moves |
+| already exists in a level | its line in the level's sprites file | none: add the Game Data row |
 | is pure decoration with no object (a poster, a sign) | a `SubmitSprites` override | a few lines |
 
 Don't draw art with `DrawRectangle`/`DrawCircle` in `DrawWorld`: shapes there can't be swapped for sprites. `DrawWorld` is for text, road markings and temporary stand-ins.
@@ -154,21 +156,37 @@ For anything else (hazards, triggers, moving or falling objects) write the full 
 
 The box is in world pixels: x/y is its top-left, and a 48×32 PNG is 96×64 at 2×. With Pivot `bottom-centre` the sprite stands on the bottom-centre of the box. In the full form, `.collision` is `Solid` (stand on it), `Hazard` (hurts), `Trigger` or `None` (walk past it). The base `Level::SubmitSprites` draws every object, so nothing else is needed.
 
-### Things the level script moves
+### Sprites files: one list per level
 
-Some levels handle things with their own code instead of the object system: Level 1 checks the trash can and hydrant hits itself, in `CheckHazards`. Give each one an `ArtObject` on the same rectangle as its hitbox:
-
-```cpp
-ArtObject("trash-can", trashCan, "trash_can"),   // in .objects: no collision, no placeholder
-```
-
-If the script also **moves** it, copy the script's rectangle onto the object every frame, at the end of `OnUpdate` and `OnReset`:
+Each level has a sprites file next to it, `level_<n>_sprites.cpp`, that says which Asset ID each of its things is drawn with. It is the one place to look:
 
 ```cpp
-if (auto *car = Objects().Get("car-1")) car->SetPosition({carBounds.x, carBounds.y});
+// level_1/level_1_sprites.cpp
+// --- Traffic and the crash ---
+{"car-*", "car"},          // 86-120 x 38-52, drives left; state "crash" while crashing
+{"chicken", "chicken"},    // 50 x 41, faces left
 ```
 
-Art-only objects use `.drawPlaceholder = false`, so until the row exists nothing is drawn and the old `DrawWorld` shape stays visible. Once the row exists the sprite draws on top of it; then delete that shape from `DrawWorld`.
+- **To give a thing a sprite:** find it in its section, then add a Game Data row with that Asset ID (`car_idle,car,car.png,...`), export and build. To use a different Asset ID, change it on that line.
+- **Until the row exists,** the thing keeps its original drawing, so the level never has holes.
+- `"car-*"` means every thing whose name starts with `car-`. A later line wins: add `{"car-3", "sports_car"}` below it to give one car its own art.
+- The size is the thing's box in world pixels; draw the PNG at about half of it. The sprite is not stretched to the box: its Pivot goes on the matching point of the box.
+- **States:** some things change look. Add a row per state, `<Asset ID>_<state>` (`traffic_light_red`, `traffic_light_green`). With one row, it is used for every state.
+- A name in the file that doesn't exist prints `Sprites: ... has no object named "..."` in the terminal.
+
+**In Level 1 every visible thing is already listed,** including the road, signs, cars, birds, pigs, clouds, the crash and the campus. The words on signs stay as text on top of the sprites.
+
+**Adding a new thing** that a level's own code moves: add an `ArtObject` for it (Level 1 lists these in `WithArtObjects` in `level_1.cpp`, in drawing order: later ones are in front), keep it on the script's rectangle in the level's `SyncObjects()` with `PlaceObject`, and give it a line in the sprites file:
+
+```cpp
+add("bus", {900, 1400, 140, 80});           // 1. in WithArtObjects, at the right place in the order
+PlaceObject("bus", busBounds);              // 2. in Level1::SyncObjects()
+{"bus", "bus"},                             // 3. in level_1_sprites.cpp
+```
+
+Its original drawing goes in `SetUpStandIns()` (`SetStandIn("bus", ...)`), so it shows until the art exists.
+
+**Drawing order.** A level draws `DrawWorld`, then its objects in the order they are listed, then `DrawWorldFront`, then the player. Level 1 draws all its text in `DrawWorldFront`, so words stay on top of sprites.
 
 ### Decorations: a `SubmitSprites` override
 

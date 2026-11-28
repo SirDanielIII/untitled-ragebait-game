@@ -3,6 +3,9 @@
 #include "levels/level.h"
 
 namespace rage {
+    // Asset IDs for Level 0's things, one organized list: level_0_sprites.cpp.
+    std::vector<SpriteAssignment> Level0Sprites();
+
     class Level0 final : public Level {
     public:
         Level0();

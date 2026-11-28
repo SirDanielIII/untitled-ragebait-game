@@ -8,6 +8,9 @@
 #include <vector>
 
 namespace rage {
+    // Asset IDs for Level 1's things, one organized list: level_1_sprites.cpp.
+    std::vector<SpriteAssignment> Level1Sprites();
+
     class Level1 final : public Level {
     public:
         Level1();
@@ -47,8 +50,20 @@ namespace rage {
 
         void OnReset() override;
         void OnUpdate(float dt, const InputFrame& input) override;
-        void DrawPileup() const;
-        void DrawWorld(const Resources& resources) const override;
+        void UpdateScript(float dt, const InputFrame& input);
+        // Every visible thing is an object (see WithArtObjects in level_1.cpp). SyncObjects
+        // keeps the moving ones on the hitboxes this script moves and shows each only while
+        // it is on screen; it runs after every update and reset. SetUpStandIns gives each
+        // its original drawing, used until its sprite exists in Game Data.
+        void SyncObjects();
+        void SetUpStandIns();
+        bool LightGreen(int x) const;
+        Vector2 CrashImpact() const;
+        // Where a scrap car or a wreck roof car is during the pile-up; `progress` gets 0-1.
+        Rectangle ScrapBody(std::size_t piece, float* progress = nullptr) const;
+        Rectangle WreckBody(std::size_t roof, float* progress = nullptr) const;
+        // Only text: every drawing is an object now, so words stay on top of sprites.
+        void DrawWorldFront(const Resources& resources) const override;
         void DrawHud(const Resources& resources) const override;
         float PlayerDuckBlend() const override { return duckBlend; }
         std::vector<Event> CreateEvents();

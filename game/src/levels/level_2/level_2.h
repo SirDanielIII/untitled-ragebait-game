@@ -5,6 +5,9 @@
 
 namespace rage {
 
+    // Asset IDs for Level 2's things, one organized list: level_2_sprites.cpp.
+    std::vector<SpriteAssignment> Level2Sprites();
+
     class Level2 final : public Level {
     public:
         Level2();

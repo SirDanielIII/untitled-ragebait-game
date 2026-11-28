@@ -29,6 +29,8 @@ namespace rage {
                 SolidPlatform("step-2", {630, 470, 180, 24}),
                 SolidPlatform("step-3", {920, 550, 180, 24}),
             },
+            // Asset IDs for the objects above: level_0_sprites.cpp.
+            .sprites = Level0Sprites(),
         };
         return definition;
     }

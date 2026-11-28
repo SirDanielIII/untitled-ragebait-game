@@ -27,6 +27,8 @@ namespace rage {
                 {.id = "platform-1", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {420, 550}, .size = {200, 24}, .assetId = "platform"},
                 {.id = "platform-2", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {750, 470}, .size = {180, 24}, .assetId = "platform"},
             },
+            // Asset IDs for the objects above: level_3_sprites.cpp.
+            .sprites = Level3Sprites(),
         };
         return definition;
     }
