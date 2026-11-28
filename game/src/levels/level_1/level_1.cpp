@@ -24,6 +24,16 @@ namespace rage {
         constexpr float rampEndX = 580.0f;
         constexpr float underpassDepth = 110.0f;
         constexpr float tunnelEndX = tunnelEntranceX + 400.0f;
+        constexpr float railHeight = 32.0f;
+        constexpr Rectangle roadEdgeWall{tunnelEntranceX, floorY - railHeight,
+                                         tunnelEndX - tunnelEntranceX, railHeight + 120};
+        constexpr char roadSpringId[] = "road-edge-spring";
+        constexpr float roadSpringWidth = 124.8f;
+        constexpr float roadSpringDuration = 0.48f;
+        constexpr float roadSpringLift = 36.0f;
+        constexpr float roadPlateDepth = 7.0f;
+        constexpr Rectangle roadSpringArt{tunnelEndX - roadSpringWidth, floorY - roadSpringLift,
+                                           roadSpringWidth, roadSpringLift + roadPlateDepth};
         constexpr float blastDuration = 1.05f;
         constexpr float wreckFlightSeconds = 1.25f;
         constexpr float wreckStagger = 0.16f;
@@ -264,6 +274,54 @@ namespace rage {
                 DrawRectangleRec({x + 4, floorY - 32 + j * 8, 10, 4}, {234, 194, 100, 255});
             DrawRectangleRounded({x + 46, top + 23, 138, 28}, 0.18f, 4, {48, 63, 81, 255});
             DrawRectangleRec({x + 16, floorY - 5, width - 16, 5}, seam);
+        }
+
+        void DrawRoadEdgeWall(Rectangle b) {
+            const Color cap{199, 202, 201, 255};
+            const Color concrete{161, 166, 168, 255};
+            const Color shade{103, 111, 116, 255};
+            const Color joint{77, 84, 90, 255};
+            const float deck = b.y + railHeight;
+            const float bottom = b.y + b.height;
+            const float end = b.x + b.width;
+            constexpr int bays = 5;
+            const float bayWidth = b.width / bays;
+
+            // Cast panels below the deck. Recessed joints and form-tie holes
+            // give the vertical face a different finish from the asphalt.
+            DrawRectangleGradientV(static_cast<int>(b.x), static_cast<int>(deck),
+                                   static_cast<int>(b.width), static_cast<int>(bottom - deck),
+                                   concrete, {122, 129, 133, 255});
+            for (int i = 0; i < bays; ++i) {
+                const float x = b.x + i * bayWidth;
+                DrawRectangleRec({x, deck + 12, 2, bottom - deck - 12}, joint);
+                DrawRectangleRec({x + 2, deck + 12, 1, bottom - deck - 12}, concrete);
+                for (float dx : {13.0f, bayWidth - 13}) {
+                    for (float y : {deck + 29, bottom - 19}) {
+                        DrawCircleV({x + dx, y + 1}, 2, concrete);
+                        DrawCircleV({x + dx, y}, 1.5f, shade);
+                    }
+                }
+            }
+            DrawRectangleRec({end - 7, deck, 7, bottom - deck}, shade);
+            DrawRectangleRec({end - 9, deck, 2, bottom - deck}, cap);
+
+            // Bevelled coping at deck height and an open parapet above it.
+            DrawRectangleRec({b.x, deck, b.width, 12}, shade);
+            DrawRectangleRec({b.x, deck, b.width, 7}, concrete);
+            DrawRectangleRec({b.x, deck, b.width, 2}, cap);
+            for (int i = 0; i <= bays; ++i) {
+                constexpr float postWidth = 13;
+                const float x = std::clamp(b.x + i * bayWidth - postWidth / 2, b.x, end - postWidth);
+                DrawRectangleRec({x, b.y + 8, postWidth, railHeight - 8}, concrete);
+                DrawRectangleRec({x + postWidth - 4, b.y + 8, 4, railHeight - 8}, shade);
+                DrawRectangleRec({x, b.y + 8, postWidth, 4}, shade);
+            }
+            DrawRectangleRec({b.x, b.y, b.width, 9}, shade);
+            DrawRectangleRec({b.x, b.y, b.width, 6}, concrete);
+            DrawRectangleRec({b.x, b.y, b.width, 2}, cap);
+            for (int i = 1; i < bays; ++i)
+                DrawRectangleRec({b.x + i * bayWidth, b.y, 2, 9}, shade);
         }
 
         void DrawUnderpassForeground() {
@@ -663,6 +721,8 @@ namespace rage {
                 add(wreckCarIds[i], WreckSlot(i), false);
             }
             add("crash-blast", {0, 0, 280, 280}, false);
+            add("road-edge-wall", roadEdgeWall);
+            add("spring-floor", roadSpringArt, false);
             // The climb and the sky, on the collision rectangles they belong to.
             const auto box = [](const GameObjectDefinition& o) { return Rectangle{o.position.x, o.position.y, o.size.x, o.size.y}; };
             std::size_t poles = 0;
@@ -727,6 +787,8 @@ namespace rage {
             // Level 1 draws its own platforms, so they pass "" (no sprite).
             .objects = WithArtObjects({
                 SolidPlatform("sidewalk-road", {0, floorY, tunnelEndX, 120}, ""),
+                {.id = roadSpringId, .type = ObjectType::Trigger, .collision = CollisionType::Trigger,
+                 .position = {tunnelEndX - roadSpringWidth, floorY - 1}, .size = {roadSpringWidth, 1}},
                 SolidPlatform(wreckIds[0], wreckSteps[0], "", false),
                 SolidPlatform(wreckIds[1], wreckSteps[1], "", false),
                 SolidPlatform(wreckIds[2], wreckSteps[2], "", false),
@@ -786,6 +848,15 @@ namespace rage {
         SetUpStandIns();
     }
 
+    void Level1::OnTrigger(GameObject& object) {
+        if (object.Id() == roadSpringId) {
+            roadSpringEndsAt = ElapsedSeconds() + roadSpringDuration;
+            MutablePlayer().Bounce({760.0f, -400.0f});
+            return;
+        }
+        Level::OnTrigger(object);
+    }
+
     void Level1::ResetTraffic() {
         traffic = {{
             {carStart[0], -195.0f, {223, 96, 91, 255}},
@@ -814,6 +885,7 @@ namespace rage {
         pigSpawnSeconds = 1.0f;
         checkpoint = Definition().spawn;
         collisionCooldown = 0.0f;
+        roadSpringEndsAt = 0.0f;
         slideProgress = 0.0f;
         collisionCount = 0;
         roadCheckpointReached = false;
@@ -944,6 +1016,10 @@ namespace rage {
         };
         const float time = ElapsedSeconds();
 
+        if (auto* spring = object("spring-floor")) {
+            spring->SetVisible(time < roadSpringEndsAt);
+            if (spring->IsVisible()) spring->SetAnimationTime(roadSpringDuration - (roadSpringEndsAt - time));
+        }
         for (std::size_t i = 0; i < lightXs.size(); ++i)
             if (auto* light = object(lightIds[i])) light->SetState(LightGreen(lightXs[i]) ? "green" : "red");
         // While the two crash cars approach, only they are drawn ("car_crash" when it exists).
@@ -1293,6 +1369,25 @@ namespace rage {
         }
         stand("sidewalk", [](Rectangle) { DrawUnderpassForeground(); });
         stand("tunnel-front", [](Rectangle) { DrawTunnelForeground(); });
+        stand("road-edge-wall", DrawRoadEdgeWall);
+        stand("spring-floor", [this](Rectangle b) {
+            const float remaining = std::clamp((roadSpringEndsAt - ElapsedSeconds()) / roadSpringDuration, 0.0f, 1.0f);
+            // A quick extension followed by two progressively smaller rebounds.
+            const float lift = roadSpringLift * remaining * remaining * std::abs(std::sin(3 * PI * (1 - remaining)));
+            const float center = b.x + b.width / 2;
+            const float base = b.y + b.height;
+            DrawRectangleRec({b.x, base - roadPlateDepth, b.width, roadPlateDepth}, {34, 38, 47, 255});
+            Vector2 coil{center, base};
+            for (int i = 1; i <= 6; ++i) {
+                const float offset = i == 6 ? 0.0f : (i % 2 ? -9.0f : 9.0f);
+                const Vector2 next{center + offset, base - lift * i / 6};
+                DrawLineEx(coil, next, 3, {218, 192, 115, 255});
+                coil = next;
+            }
+            const float top = base - lift - roadPlateDepth;
+            DrawRectangleRec({b.x, top, b.width, roadPlateDepth}, {49, 55, 70, 255});
+            DrawRectangleRec({b.x, top, b.width, 4}, {105, 113, 126, 255});
+        });
         // The chicken is scenery, but its presence causes the traffic event.
         stand("chicken", [this](Rectangle) {
             const int cx = static_cast<int>(chickenX);

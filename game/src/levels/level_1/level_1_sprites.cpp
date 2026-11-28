@@ -26,6 +26,8 @@ namespace rage {
             {"underpass-road", "underpass_road"},     // 240 x 132, the ramp under the sidewalk
             {"tunnel-back", "tunnel_back"},           // 70 x 103, the dark tunnel mouth behind the cars
             {"tunnel-front", "tunnel_front"},         // 424 x 135, the wall in front of the cars
+            {"road-edge-wall", "road_edge_wall"},     // 400 x 152, concrete rail and retaining wall
+            {"spring-floor", "road_spring"},          // 125 x 43, plays once per launch
             {"trash-can", "trash_can"},               // 46 x 54, a hazard
             {"hydrant", "hydrant"},                   // 38 x 43, a hazard
             {"sign-school", "sign_school"},           // 82 x 138, with its post; "SCHOOL >" stays text
