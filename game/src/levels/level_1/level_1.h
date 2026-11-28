@@ -53,6 +53,7 @@ namespace rage {
 
         void OnReset() override;
         void OnUpdate(float dt, const InputFrame& input) override;
+        void OnTrigger(GameObject& object) override;
         void UpdateScript(float dt, const InputFrame& input);
         // Every visible thing is an object (see WithArtObjects in level_1.cpp). SyncObjects
         // keeps the moving ones on the hitboxes this script moves and shows each only while
@@ -91,6 +92,7 @@ namespace rage {
 
         Vector2 checkpoint = {};
         float collisionCooldown = 0.0f;
+        float roadSpringEndsAt = 0.0f;
         float pileupSeconds = 0.0f;
         float slideProgress = 0.0f;
         float chickenX = 0.0f;
