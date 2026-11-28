@@ -14,7 +14,12 @@ void TestAssetRendering();
 void TestAudioData();
 void TestAudioPlayback();
 void TestObjects();
+void TestBirds();
+void TestBirdRendering();
 void TestPlayerMovement();
+void TestPlayerTuning();
+void TestCrouchJumps();
+void TestJumpParticleRendering(const Resources &resources);
 #if defined(_WIN32) && defined(RAGE_DESKTOP_GLFW)
 void TestWindowResize(void* handle);
 #endif
@@ -363,29 +368,39 @@ void TestSession()
 
 int RunSelfTests()
 {
-    try
-    {
-        TestDialogue();
-        TestConfig();
-        TestMovement();
-        TestClimbingAndStamina();
-        TestPlayerMovement();
-        TestPlayerHealth();
-        TestSliders();
-        TestSession();
-        TestLevelAuthoring();
-        TestEventManager();
-        TestGameData();
-        TestAudioData();
-        TestObjects();
+    int failures = 0;
+    // Report independent groups even when one fails, so an unrelated regression
+    // cannot hide the results of the remaining gameplay and asset checks.
+    const auto run = [&](const char* name, void (*test)()) {
+        try {
+            test();
+        } catch (const std::exception& error) {
+            ++failures;
+            std::cerr << "FAIL: " << name << ": " << error.what() << '\n';
+        }
+    };
+    run("dialogue", TestDialogue);
+    run("config", TestConfig);
+    run("movement", TestMovement);
+    run("climbing and stamina", TestClimbingAndStamina);
+    run("player movement", TestPlayerMovement);
+    run("player tuning", TestPlayerTuning);
+    run("crouch jumps", TestCrouchJumps);
+    run("player health", TestPlayerHealth);
+    run("sliders", TestSliders);
+    run("session", TestSession);
+    run("level authoring", TestLevelAuthoring);
+    run("events", TestEventManager);
+    run("Game Data", TestGameData);
+    run("audio data", TestAudioData);
+    run("objects", TestObjects);
+    run("birds", TestBirds);
+    if (failures == 0) {
         std::cout << "All foundation self-tests passed (no window/audio context required).\n";
-        return 0;
+    } else {
+        std::cerr << failures << " self-test group(s) failed.\n";
     }
-    catch (const std::exception& error)
-    {
-        std::cerr << "FAIL: " << error.what() << '\n';
-        return 1;
-    }
+    return failures == 0 ? 0 : 1;
 }
 
 int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
@@ -426,6 +441,8 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
     }
     std::cout << "PASS: custom font, missing-font fallback and optional texture replacement\n";
     TestAssetRendering();
+    TestBirdRendering();
+    TestJumpParticleRendering(resources);
     TestAudioPlayback();
     auto click = [&](ActionKind kind, int value = 0) { Frame(0, ClickAction(game, kind, value)); };
     auto capture = [&](const std::string& name, bool screen = false)
@@ -454,6 +471,12 @@ int GameWindow::RunSmokeTest(const std::filesystem::path& captureDirectory)
             Frame(1.0f / 60, {.duck = true});
             Check(game.ActiveLevel()->GetPlayer().Crouching(), "Rendered crouch lost its shared player state");
             capture("stage_1_crouch");
+            Frame(1.0f / 60, {.jump = true, .duck = true});
+            Check(!game.ActiveLevel()->GetPlayer().Crouching() && game.ActiveLevel()->PlayerAnimator().State() == "jump",
+                  "Crouch jump kept the airborne crouch animation");
+            capture("stage_1_crouch_jump");
+            Frame(0.06f, {.duck = true});
+            capture("stage_1_air_particles");
         }
         Frame(0, {.pause = true});
         capture("pause");

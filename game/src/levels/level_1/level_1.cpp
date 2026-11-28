@@ -33,38 +33,6 @@ namespace rage {
         constexpr char anvilId[] = "doorway-anvil";
         constexpr float anvilPoofDuration = 0.45f;
         constexpr char exitId[] = "exit-level1";
-        struct PoleBird {
-            Vector2 perch;
-            float rhythm;
-            float phase;
-            Color plumage;
-        };
-        constexpr std::array<PoleBird, 3> birds{{
-            {{3240, 1120}, 2.2f, 0.4f, {104, 224, 211, 255}},
-            {{3415, 1010}, 1.8f, 2.1f, {249, 150, 115, 255}},
-            {{3610, 882}, 2.5f, 4.6f, {204, 154, 246, 255}}
-        }};
-        Rectangle BirdBounds(const PoleBird& bird, float time) {
-            const float phase = time * bird.rhythm + bird.phase;
-            return {bird.perch.x + 84 * std::sin(phase),
-                    bird.perch.y - 50 * std::abs(std::sin(phase * 2)), 38, 27};
-        }
-        void DrawPoleBird(const PoleBird& bird, float time) {
-            const Rectangle b = BirdBounds(bird, time);
-            const float facing = std::cos(time * bird.rhythm + bird.phase) >= 0 ? 1.0f : -1.0f;
-            rlPushMatrix();
-            rlTranslatef(b.x + 19, b.y + 14, 0);
-            DrawEllipse(0, 0, 19, 13, bird.plumage);
-            DrawEllipse(static_cast<int>(-6 * facing), static_cast<int>(4 * std::sin(time * 22)), 10, 5, DARKPURPLE);
-            DrawCircleV({9 * facing, -7}, 8, RAYWHITE);
-            DrawCircleV({12 * facing, -8}, 3, BLACK);
-            DrawLineEx({16 * facing, -1}, {25 * facing, 1}, 5, GOLD);
-            DrawLineEx({0, -10}, {-1, -20}, 2, DARKBLUE);
-            const float rotor = 12 * std::cos(time * 30);
-            DrawLineEx({-1 - rotor, -21}, {-1 + rotor, -19}, 4, RED);
-            rlPopMatrix();
-        }
-
         void DrawAnvil(Rectangle b) {
             const Color steel{62, 73, 92, 255};
             DrawTriangle({b.x, b.y + 2}, {b.x + 37, b.y + 22}, {b.x + 37, b.y + 2}, steel);
@@ -644,7 +612,11 @@ namespace rage {
         return definition;
     }
 
-    Level1::Level1() : Level(Level1Definition()) {
+    Level1::Level1() : Level(Level1Definition()), birds{
+        Bird(PoleFlight{{3240, 1120}, 2.2f, 0.4f}),
+        Bird(PoleFlight{{3415, 1010}, 1.8f, 2.1f}),
+        Bird(PoleFlight{{3610, 882}, 2.5f, 4.6f})
+    } {
         for (auto& event : CreateEvents()) Events().RegisterEvent(std::move(event));
     }
 
@@ -667,6 +639,7 @@ namespace rage {
     void Level1::OnReset() {
         timer.Reset();
         ResetTraffic();
+        for (auto& bird : birds) bird.Reset();
         birdCooldown = 0;
         ResetStars();
         pigs.clear();
@@ -785,6 +758,7 @@ namespace rage {
 
     void Level1::OnUpdate(float dt, const InputFrame& input) {
         timer.Update(dt);
+        for (auto& bird : birds) bird.Update(dt, ElapsedSeconds(), GetPlayer().Bounds());
         dt = std::min(dt, 0.1f); // Match the physics engine maximum step.
         UpdatePigs(dt);
         // Slide motion stays inside the level rather than changing shared movement code.
@@ -904,7 +878,7 @@ namespace rage {
         Rectangle player = GetPlayer().Bounds();
         birdCooldown = std::max(0.0f, birdCooldown - dt);
         for (const auto& bird : birds) {
-            const Rectangle b = BirdBounds(bird, ElapsedSeconds());
+            const Rectangle b = bird.Bounds();
             if (birdCooldown == 0 && Intersects(player, b)) {
                 const bool left = player.x + player.width / 2 < b.x + b.width / 2;
                 MutablePlayer().Bounce({left ? -390.0f : 390.0f, -315.0f});
@@ -999,6 +973,11 @@ namespace rage {
         DrawCrashBlast(impact, pileupSeconds);
     }
 
+    void Level1::SubmitSprites(RenderQueue& queue, const Resources& resources) const {
+        Level::SubmitSprites(queue, resources);
+        for (const auto& bird : birds) bird.SubmitSprites(queue, resources.Assets(), Camera().zoom);
+    }
+
     void Level1::DrawWorld(const Resources&) const {
         // An ordinary sidewalk abruptly meets an oncoming carriageway.
         DrawRectangleRec({0, floorY, 580, 120}, {108, 119, 133, 255});
@@ -1086,8 +1065,6 @@ namespace rage {
             if (object.id.rfind("telephone-step-", 0) != 0 && object.id != "sky-checkpoint-ledge") continue;
             DrawUtilityPole({object.position.x, object.position.y, object.size.x, object.size.y});
         }
-
-        for (const auto& bird : birds) DrawPoleBird(bird, ElapsedSeconds());
 
         // Draw the grounded masts first, then the insulators and live cables.
         DrawWireSupports();

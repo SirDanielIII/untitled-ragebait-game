@@ -1,7 +1,23 @@
 #include "engine/graphics/placeholder_art.h"
 #include "ui/theme.h"
 
+#include <cmath>
+
 namespace rage::art {
+    void Bird(Rectangle b, bool facingRight, float seconds) {
+        const float direction = facingRight ? 1.0f : -1.0f;
+        const float centerX = b.x + b.width / 2;
+        const float centerY = b.y + b.height / 2;
+        DrawEllipse(static_cast<int>(centerX), static_cast<int>(centerY), b.width * 0.42f, b.height * 0.4f, DARKGRAY);
+        DrawEllipse(static_cast<int>(centerX - direction * b.width * 0.12f),
+                    static_cast<int>(centerY + std::sin(seconds * 22) * b.height * 0.15f),
+                    b.width * 0.26f, b.height * 0.18f, GRAY);
+        DrawCircleV({centerX + direction * b.width * 0.3f, centerY - b.height * 0.2f}, b.height * 0.25f, BLACK);
+        DrawCircleV({centerX + direction * b.width * 0.34f, centerY - b.height * 0.25f}, b.height * 0.07f, RAYWHITE);
+        DrawLineEx({centerX + direction * b.width * 0.4f, centerY - b.height * 0.12f},
+                   {centerX + direction * b.width * 0.6f, centerY - b.height * 0.05f}, b.height * 0.14f, ORANGE);
+    }
+
     void Student(const Resources &resources, Rectangle b) {
         if (resources.DrawArt(ArtId::Student, b)) return;
         const auto rect = [&](float x, float y, float w, float h, Color c) {

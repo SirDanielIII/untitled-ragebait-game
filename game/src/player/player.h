@@ -3,6 +3,7 @@
 #include "engine/config/config.h"
 #include "engine/input/input.h"
 #include "raylib.h"
+#include <optional>
 #include <span>
 
 namespace rage {
@@ -12,6 +13,8 @@ namespace rage {
         void Reset(Vector2 spawn);
         void Reset(Vector2 spawn, const GameConfig &config);
         void Bounce(Vector2 launchVelocity);
+        // Consumed by the level to emit a burst at the actual takeoff point.
+        std::optional<Vector2> TakeCrouchJump();
 
         void Update(float dt, const InputFrame &input, const GameConfig &config,
                     std::span<const Rectangle> platforms, Rectangle world,
@@ -54,5 +57,6 @@ namespace rage {
         int maxHealth = 1;
         int health = 1;
         float moveInput = 0.0f;
+        std::optional<Vector2> crouchJumpOrigin;
     };
 }

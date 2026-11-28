@@ -289,14 +289,18 @@ void TestLevelClimbingRestrictions() {
 }
 }
 
-void TestPlayerMovement() {
+void TestPlayerTuning() {
     TestTuningConfig();
+    std::cout << "PASS: packaged and custom player tuning\n";
+}
+
+void TestPlayerMovement() {
     TestSlidingAndCrouch();
     TestJumpCostsAndRepetition();
     TestLowStaminaSpeed();
     TestExhaustionAndClimb();
     TestLevelClimbingRestrictions();
-    std::cout << "PASS: configurable player tuning, counter-strafing, crouch clearance, jump costs, "
+    std::cout << "PASS: counter-strafing, crouch clearance, jump costs, "
                  "held jumps, red-threshold slowdown, walking recovery, exhaustion and Level 2 climbing restriction\n";
 }
 }

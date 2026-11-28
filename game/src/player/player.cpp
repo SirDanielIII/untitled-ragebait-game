@@ -26,6 +26,7 @@ namespace rage {
         stamina = staminaCapacity;
         health = maxHealth;
         moveInput = 0.0f;
+        crouchJumpOrigin.reset();
     }
 
     void Player::Reset(Vector2 spawn, const GameConfig &config) {
@@ -40,6 +41,12 @@ namespace rage {
         grounded = false;
         climbing = false;
         climbLockSeconds = bounceClimbLock;
+    }
+
+    std::optional<Vector2> Player::TakeCrouchJump() {
+        const auto origin = crouchJumpOrigin;
+        crouchJumpOrigin.reset();
+        return origin;
     }
 
     void Player::TakeDamage(int amount) {
@@ -97,14 +104,8 @@ namespace rage {
             }
             return false;
         };
-        // Input, physics and stamina share small steps, including takeoffs after landing.
-        float remaining = std::min(dt, 0.1f);
-        while (remaining > 0.0f) {
-            const float step = std::min(remaining, 1.0f / 120.0f);
-            remaining -= step;
-
-            const bool wasCrouching = crouching;
-            const float height = config.standingHeight * (input.duck ? config.crouchHeightMultiplier : 1.0f);
+        const auto resizeForCrouch = [&](bool duck) {
+            const float height = config.standingHeight * (duck ? config.crouchHeightMultiplier : 1.0f);
             const Rectangle resized = {position.x, position.y + bodyHeight - height, standingSize.x, height};
             // Keep the feet fixed. A low ceiling keeps the player crouched after release.
             const bool blocked = height > bodyHeight && (resized.y < world.y ||
@@ -112,10 +113,19 @@ namespace rage {
             if (!blocked) {
                 position.y = resized.y;
                 bodyHeight = height;
-                crouching = input.duck;
+                crouching = duck;
             }
+        };
+        // Input, physics and stamina share small steps, including takeoffs after landing.
+        float remaining = std::min(dt, 0.1f);
+        while (remaining > 0.0f) {
+            const float step = std::min(remaining, 1.0f / 120.0f);
+            remaining -= step;
+
+            const bool wasCrouching = crouching;
             // Exact contact also establishes support immediately after spawning/resetting.
             grounded = settleOnSupport();
+            resizeForCrouch(input.duck && grounded);
             const bool wasClimbing = climbing;
             climbing = false;
             climbLockSeconds = std::max(0.0f, climbLockSeconds - step);
@@ -144,6 +154,8 @@ namespace rage {
                 stamina = std::max(0.0f, stamina - jumpCost);
                 if (stamina == 0.0f) exhausted = true;
                 grounded = false;
+                if (crouchJump) crouchJumpOrigin = Vector2{position.x + standingSize.x / 2, position.y + bodyHeight};
+                resizeForCrouch(false);
             }
             const float speedMultiplier = (crouching ? config.crouchSpeedMultiplier : 1.0f)
                 * (exhausted || LowStamina(config) ? config.exhaustedSpeedMultiplier : 1.0f);
@@ -223,6 +235,9 @@ namespace rage {
                 grounded = true;
             }
             if (!grounded) grounded = settleOnSupport();
+            // Walking off an edge or climbing also ends crouch. Preserve a compact
+            // collider only while a low ceiling physically prevents standing up.
+            if (!grounded) resizeForCrouch(false);
 
             const float drain = (crouching ? config.crouchStaminaDrain : 0.0f)
                 + (climbing ? config.climbStaminaDrain : 0.0f);

@@ -30,6 +30,7 @@ namespace rage {
     void Level::Restart() {
         events.Reset();
         player.Reset(definition.spawn);
+        jumpParticles.Clear();
         respawnPoint = definition.spawn;
         levelComplete = false;
         objects.ResetAll();
@@ -78,6 +79,8 @@ namespace rage {
         playerInput.climb = input.climb && CanClimb();
         player.Update(dt, playerInput, config, objects.SolidBounds(), definition.world,
                       objects.SolidBounds(CollisionType::OneWay));
+        jumpParticles.Update(dt);
+        if (const auto feet = player.TakeCrouchJump()) jumpParticles.Emit(*feet);
         UpdatePlayerAnimation(dt);
         UpdatePlayerSounds(dt);
         CheckHazardsAndTriggers();
@@ -336,6 +339,7 @@ namespace rage {
             DrawWorld(resources);
         });
         SubmitSprites(queue, resources);
+        jumpParticles.SubmitSprites(queue, camera.zoom);
         SubmitPlayer(queue, resources);
         queue.Flush();
         // Drawn after the queue flushes, still inside the camera

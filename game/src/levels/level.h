@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include "player/player.h"
+#include "player/jump_particles.h"
 #include "ui/dialogue/dialogue.h"
 #include "engine/resources/resources.h"
 #include <memory>
@@ -169,6 +170,7 @@ namespace rage {
 
         const LevelDefinition &definition;
         Player player;
+        JumpParticles jumpParticles;
         DialogueBox dialogue;
         Camera2D camera = {};
         DialogueCue currentCue;

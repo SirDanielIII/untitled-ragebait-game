@@ -1,2 +1,4 @@
 Animation ID,Asset ID,File Name,Frame Width (px),Frame Height (px),Frames,Frames per Row,FPS,Loops,Pivot,Faces,Layer,Notes
 player_idle,player_character,male_character.png,16,32,1,,,,bottom-centre,,Middle,test sprite
+bird_fly,bird,,19,14,1,,,,centre,right,Middle,Shared Level 1 and Level 2 bird; add a PNG when ready
+bird_swoop,bird,,19,14,1,,,,centre,right,Middle,Optional Level 2 swoop art
