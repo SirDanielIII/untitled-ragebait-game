@@ -58,7 +58,7 @@ Artwork does not define collision geometry. Edit platforms and hazard bounds in 
 
 ## Game Data sprites and animations
 
-Sprites and animations are described by the **CISC 320 Game Data** Google Sheet, not by C++ code. For a step-by-step guide to every task (making art in any program, filling in the sheet, placing objects in levels, animating them, troubleshooting), see [game/src/engine/assets/README.md](../game/src/engine/assets/README.md). The game reads an exported copy at startup, loads each PNG once, and draws placeholders for anything that has no art yet. Changing a size, frame count, FPS, pivot or layer in the sheet, or replacing a PNG, takes effect on the next launch without code changes. The sheet is the master copy; never edit the CSV by hand.
+Sprites and animations are described by the **CISC 320 Game Data** Google Sheet, not by C++ code. For the steps to add a sprite (making the PNG, filling in the sheet, placing it in a level, animating it, troubleshooting), see [game/src/engine/assets/README.md](../game/src/engine/assets/README.md). The game reads an exported copy at startup, loads each PNG once, and draws placeholders for anything that has no art yet. Changing a size, frame count, FPS, pivot or layer in the sheet, or replacing a PNG, takes effect on the next launch without code changes. The sheet is the master copy; never edit the CSV by hand.
 
 ### Files
 
@@ -103,7 +103,7 @@ Sprite size does not change collision. The player's collision box stays 30 × 44
 
 ### How sprites are scaled
 
-Every sprite is scaled uniformly, never stretched, with nearest-neighbour filtering so pixels stay sharp. Artists export PNGs at 100%: the game draws each PNG pixel as `pixelScale` (2) world pixels, and the level camera's zoom (2) makes each art pixel 4×4 on screen. A sprite can also be best-fitted inside a rectangle; it then grows as large as fits without changing shape, rounded down to whole pixels. The camera and player are snapped to whole pixels while scrolling, and the window is scaled so pixel art stays crisp at any window size. Details and code: [game/src/engine/assets/README.md](../game/src/engine/assets/README.md#how-sprites-are-scaled).
+Every sprite is scaled uniformly, never stretched, with nearest-neighbour filtering so pixels stay sharp. Artists export PNGs at 100%: the game draws each PNG pixel as `pixelScale` (2) world pixels, and the level camera's zoom (2) makes each art pixel 4×4 on screen. A sprite can also be best-fitted inside a rectangle; it then grows as large as fits without changing shape, rounded down to whole pixels. The camera and player are snapped to whole pixels while scrolling, and the window is scaled so pixel art stays crisp at any window size. The settings are `pixelScale` in `game/src/engine/assets/asset_manager.h` and the camera zoom in `game/src/levels/level.cpp`; how to add sprites is in [game/src/engine/assets/README.md](../game/src/engine/assets/README.md).
 
 ### Updating assets
 

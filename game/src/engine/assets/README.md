@@ -3,9 +3,30 @@
 Every sprite and animation in the game is described in the **CISC 320 Game Data** Google Sheet instead of in C++. When the game starts, it reads an exported copy of that sheet, loads each PNG once, and draws a placeholder for anything that has no art yet.
 
 - **Changing art** (a new PNG, a different size, frame count, speed, pivot or layer) needs **no code**.
-- **Putting a new object in a level** needs a few lines in that level's file, because the sheet says *what* something looks like, not *where* it goes.
+- **Putting a new object in a level** needs one line in that level's file, because the sheet says *what* something looks like, not *where* it goes.
 
-Contents: [Folders](#folders) · [1. Make the art](#1-make-the-art) · [2. Describe it in Game Data](#2-describe-it-in-game-data) · [3. Get it into the game](#3-get-it-into-the-game) · [4. Player art](#4-player-art) · [5. Place objects in a level](#5-place-objects-in-a-level) · [6. Animated objects](#6-animated-objects) · [How sprites are scaled](#how-sprites-are-scaled) · [Changing existing art](#changing-existing-art) · [Placeholders and invisible objects](#placeholders-and-invisible-objects) · [Troubleshooting](#troubleshooting) · [Code reference](#code-reference) · [Tests](#tests) · [Committing](#committing)
+Contents: [How to add a sprite](#how-to-add-a-sprite) · [Folders](#folders) · [1. Make the art](#1-make-the-art) · [2. Describe it in Game Data](#2-describe-it-in-game-data) · [3. Get it into the game](#3-get-it-into-the-game) · [4. Player art](#4-player-art) · [5. Place objects in a level](#5-place-objects-in-a-level) · [6. Animated objects](#6-animated-objects) · [How sprites are scaled](#how-sprites-are-scaled) · [Changing existing art](#changing-existing-art) · [Placeholders and invisible objects](#placeholders-and-invisible-objects) · [Troubleshooting](#troubleshooting) · [Code reference](#code-reference) · [Tests](#tests) · [Committing](#committing)
+
+## How to add a sprite
+
+The short version. Each step links to the details below.
+
+1. **Make a PNG** at 100%, with a transparent background, cropped tightly. Animation frames go side by side in one PNG. Save it in `game/resources/art/static/` (one frame) or `game/resources/art/animated/` (several frames). [Details](#1-make-the-art)
+2. **Add a row to the Game Data sheet** (Assets tab): Animation ID `<asset>_<state>`, Asset ID, File Name, the size of one frame, and the number of frames. [All columns](#2-describe-it-in-game-data)
+   ```
+   school_desk_idle,school_desk,school_desk.png,32,32,1,,,,bottom-centre,,Middle,
+   ```
+3. **Export the CSV:** File → Download → Comma-separated values, rename it `game_data.csv`, and replace `game/resources/data/game_data.csv`. [Details](#3-get-it-into-the-game)
+4. **Put it in the game:**
+   - **The player:** Asset ID `player_character` with `player_idle`, `player_walk`, `player_jump`, `player_fall`. No code. [Details](#4-player-art)
+   - **Something already in a level:** open the level's sprites file, `game/src/levels/level_<n>/level_<n>_sprites.cpp`. It lists every thing in that level with its Asset ID and size, grouped by area. Add a Game Data row with that Asset ID (or change the Asset ID on its line). No other code. [Details](#sprites-files-one-list-per-level)
+   - **Something new in a level:** add one line to the level's `.objects` list in `game/src/levels/level_<n>/level_<n>.cpp`, then give it a line in the sprites file. The last argument is the Asset ID:
+     ```cpp
+     SolidPlatform("desk-1", {600, 586, 64, 64}, "school_desk"),   // the player can stand on it
+     ArtObject("poster-1", {800, 400, 64, 96}, "poster"),          // art only, the player walks past
+     ```
+     The box is `{x, y, width, height}`: x/y is the top-left (y grows downward), and width/height is the PNG size × 2. [Details](#5-place-objects-in-a-level)
+5. **Build, then run.** If it doesn't show, check the terminal for `Game Data:` warnings. [Troubleshooting](#troubleshooting)
 
 ## Folders
 
@@ -104,7 +125,72 @@ The player needs no code. Give its rows the Asset ID **`player_character`** and 
 
 ## 5. Place objects in a level
 
-Each level's code is in `game/src/levels/level_<number>/level_<number>.cpp`. Near the bottom is the level's class (`Level1` and so on). Add a `SubmitSprites` function inside it, next to `OnReset` and `OnUpdate`:
+Each level's code is in `game/src/levels/level_<number>/level_<number>.cpp`. Pick the way that fits the thing you're adding:
+
+| The thing... | Use | Drawing code needed |
+|---|---|---|
+| sits there, collides or is a hazard (platform, furniture, trash can) | an entry in `.objects` with an `.assetId` | none |
+| is moved or checked by the level's own script (Level 1's cars, birds, trash can) | an `ArtObject` in `.objects`, kept on the script's hitbox | none if it stays still; one `PlaceObject` line if it moves |
+| already exists in a level | its line in the level's sprites file | none: add the Game Data row |
+| is pure decoration with no object (a poster, a sign) | a `SubmitSprites` override | a few lines |
+
+Don't draw art with `DrawRectangle`/`DrawCircle` in `DrawWorld`: shapes there can't be swapped for sprites. `DrawWorld` is for text, road markings and temporary stand-ins.
+
+### Objects: no drawing code
+
+Add the object to the level's `.objects` list. Its Asset ID is the **Asset ID** column of the sheet, and it plays `<assetId>_<state>` (it starts in `idle`; with no matching state it uses the asset's first row). Every level uses the same shortcuts from `objects/game_object.h`, one line per object, with the box as `{x, y, width, height}`:
+
+```cpp
+SolidPlatform("step-1", {350, 550, 180, 24}),                  // stand on it; Asset ID "platform"
+SolidPlatform("desk-1", {600, 586, 64, 64}, "school_desk"),   // stand on it, with its own art
+SolidPlatform("wire-1", {2940, 800, 220, 16}, ""),            // collision only, no sprite
+ArtObject("poster-1", {800, 400, 64, 96}, "poster"),          // art only, no collision
+```
+
+For anything else (hazards, triggers, moving or falling objects) write the full form:
+
+```cpp
+{.id = "spikes-1", .type = ObjectType::Hazard, .collision = CollisionType::Hazard,
+ .position = {500, 600}, .size = {60, 50}, .assetId = "spikes"},
+```
+
+The box is in world pixels: x/y is its top-left, and a 48×32 PNG is 96×64 at 2×. With Pivot `bottom-centre` the sprite stands on the bottom-centre of the box. In the full form, `.collision` is `Solid` (stand on it), `Hazard` (hurts), `Trigger` or `None` (walk past it). The base `Level::SubmitSprites` draws every object, so nothing else is needed.
+
+### Sprites files: one list per level
+
+Each level has a sprites file next to it, `level_<n>_sprites.cpp`, that says which Asset ID each of its things is drawn with. It is the one place to look:
+
+```cpp
+// level_1/level_1_sprites.cpp
+// --- Traffic and the crash ---
+{"car-*", "car"},          // 86-120 x 38-52, drives left; state "crash" while crashing
+{"chicken", "chicken"},    // 50 x 41, faces left
+```
+
+- **To give a thing a sprite:** find it in its section, then add a Game Data row with that Asset ID (`car_idle,car,car.png,...`), export and build. To use a different Asset ID, change it on that line.
+- **Until the row exists,** the thing keeps its original drawing, so the level never has holes.
+- `"car-*"` means every thing whose name starts with `car-`. A later line wins: add `{"car-3", "sports_car"}` below it to give one car its own art.
+- The size is the thing's box in world pixels; draw the PNG at about half of it. The sprite is not stretched to the box: its Pivot goes on the matching point of the box.
+- **States:** some things change look. Add a row per state, `<Asset ID>_<state>` (`traffic_light_red`, `traffic_light_green`). With one row, it is used for every state.
+- A name in the file that doesn't exist prints `Sprites: ... has no object named "..."` in the terminal.
+
+**In Level 1 every visible thing is already listed,** including the road, signs, cars, pigs, clouds, the crash and the campus. Birds in every level are drawn by `objects/bird.cpp` with Asset ID `bird`. The words on signs stay as text on top of the sprites.
+
+**Adding a new thing** that a level's own code moves: add an `ArtObject` for it (Level 1 lists these in `WithArtObjects` in `level_1.cpp`, in drawing order: later ones are in front), keep it on the script's rectangle in the level's `SyncObjects()` with `PlaceObject`, and give it a line in the sprites file:
+
+```cpp
+add("bus", {900, 1400, 140, 80});           // 1. in WithArtObjects, at the right place in the order
+PlaceObject("bus", busBounds);              // 2. in Level1::SyncObjects()
+{"bus", "bus"},                             // 3. in level_1_sprites.cpp
+```
+
+Its original drawing goes in `SetUpStandIns()` (`SetStandIn("bus", ...)`), so it shows until the art exists.
+
+**Drawing order.** A level draws `DrawWorld`, then its objects in the order they are listed, then `DrawWorldFront`, then the player. Level 1 draws all its text in `DrawWorldFront`, so words stay on top of sprites.
+
+### Decorations: a `SubmitSprites` override
+
+Near the bottom of the level's file is its class (`Level1` and so on). Add a `SubmitSprites` function inside it, next to `OnReset` and `OnUpdate`, and declare it in the level's `.h` with `override`:
 
 ```cpp
 class Level1 final : public Level {
@@ -143,28 +229,35 @@ The sprite keeps its shape (it is never stretched), its size is rounded down so 
 
 ### Choosing coordinates
 
-Positions are **world pixels**, the same units as the level's `.platforms`, `.spawn` and `.world` at the top of the same file:
+Positions are **world pixels**, the same units as the level's `.world`, `.spawn` and `.objects` at the top of the same file (Level 0 shown):
 
 ```cpp
-.world = {0, 0, 2600, 700},        // level is 2600 wide, 700 tall
-.spawn = {100, 606},               // where the player starts
-.platforms = {
-    {0, 650, 2600, 50},            // {x, y, width, height}: the floor; its top is y = 650
-    {400, 545, 250, 24},           // a platform from x 400 to 650, top at y = 545
+.world = {0, 0, 1500, 700},                         // level is 1500 wide, 700 tall
+.spawn = {100, 606},                                // where the player starts
+.objects = {
+    SolidPlatform("floor", {0, 650, 1500, 50}),     // the floor; its top is y = 650
+    SolidPlatform("step-1", {350, 550, 180, 24}),   // a step from x 350 to 530, top at y = 550
 ```
 
 - `x` grows to the right from 0. `y` grows **downward** from 0 at the top.
-- The position is where the **pivot** goes. For `bottom-centre`, use the top `y` of whatever it stands on: `{600, 650}` stands on Level 1's floor, and `{525, 545}` stands on the middle of the second platform.
-- For `top-left`, the position is the image's top-left corner. For `centre`, it is the middle of the image.
+- For an object, `{x, y}` is the top-left of its box. To stand it on the floor, use `y = 650 − height`.
+- In `SubmitSprites`, the position is where the **pivot** goes. For `bottom-centre`, use the top `y` of whatever it stands on: `{600, 650}` stands on Level 0's floor. For `top-left` it is the image's top-left corner; for `centre`, its middle.
+- Each level has its own size: Level 1's floor is at y 1480, not 650.
 - Expect some trial and error: change the numbers, build, look.
 
 ### Making it solid
 
-A sprite is only a picture, so the player walks through it. To make something solid, also add a rectangle in the same place to `.platforms`. Hazards and triggers need their own gameplay code in `OnUpdate`. Keep their rectangles in the level code, not in the art.
+`SolidPlatform` objects are solid. `ArtObject`s and `SubmitSprites` sprites are only pictures, so the player walks through them. Hazards and triggers use the full form with `CollisionType::Hazard` or `CollisionType::Trigger`.
 
 ## 6. Animated objects
 
-An animated object needs an `Animator` to track its state and playback time. Add one per object as a member of the level class:
+**Objects animate on their own.** An object plays `<assetId>_<state>` with the row's FPS and Loops, starting in `idle`. To switch animations, set its state from the level's code; the new animation starts from its first frame:
+
+```cpp
+if (auto *anvil = Objects().Get("anvil-1")) anvil->SetState("fall");   // plays the anvil_fall row
+```
+
+The rest of this section is only for sprites a level draws itself in `SubmitSprites`. Those need their own `Animator` to track state and playback time, one per sprite, as a member of the level class:
 
 ```cpp
 class Level1 final : public Level {
@@ -240,6 +333,7 @@ Placement in levels stays the same because positions refer to the pivot, not the
 ## Placeholders and invisible objects
 
 - **Art not made yet:** add the row with the planned size and leave File Name blank (or name a PNG that doesn't exist yet). The game draws a translucent magenta box of that size at the pivot, so programmers can place and test objects before the art exists. When the PNG arrives, it replaces the box on the next build with no code changes.
+- **Level still draws a stand-in:** set `.drawPlaceholder = false` on the object. With no row, nothing is drawn for it; with a row, the sprite appears.
 - **Never drawn:** File Name `none`, for example trigger zones. These rows can still be looked up and placed, but nothing is drawn and they are never reported as missing.
 
 ## Troubleshooting

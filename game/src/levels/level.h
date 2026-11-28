@@ -8,6 +8,8 @@
 #include "objects/object_manager.h"
 #include <vector>
 #include <string>
+#include <functional>
+#include <string_view>
 #include "player/player.h"
 #include "player/jump_particles.h"
 #include "ui/dialogue/dialogue.h"
@@ -51,6 +53,14 @@ namespace rage {
     enum class DialoguePolicy { WhenAvailable, Interrupt };
 
     // Content is data; behavior belongs in the corresponding Level subclass.
+    // One line of a level's sprites file: the object named `thing` is drawn with the
+    // Game Data sprite whose Asset ID is `assetId`. A `thing` ending in '*' names every
+    // object starting with the rest ("car-*"). See level_<n>/level_<n>_sprites.cpp.
+    struct SpriteAssignment {
+        std::string thing;
+        std::string assetId;
+    };
+
     struct LevelDefinition {
         LevelId id;
         const char *title;
@@ -69,6 +79,9 @@ namespace rage {
         bool sideBoundaries = true;
         bool ceilingBoundary = true;
         bool bottomKillZone = true;
+        // Asset IDs for the objects above, from the level's sprites file. These
+        // replace an object's own .assetId when the level loads.
+        std::vector<SpriteAssignment> sprites;
     };
 
     class Level {
@@ -84,6 +97,9 @@ namespace rage {
         void Draw(const Resources &resources, const GameConfig &config) const;
 
         const LevelDefinition &Definition() const { return definition; }
+        // Names in the level's sprites file that match no object (typos). The game prints
+        // them when it creates the level.
+        const std::vector<std::string> &UnmatchedSprites() const { return unmatchedSprites; }
         bool CanClimb() const { return definition.id == LevelId::Level2; }
         const Player &GetPlayer() const { return player; }
         const Typewriter &Dialogue() const { return dialogue.writer; }
@@ -122,6 +138,13 @@ namespace rage {
         bool DeactivateObject(const std::string &id);
         bool StartObjectFall(const std::string &id);
         GameObject *SpawnObject(const GameObjectDefinition &definition) { return objects.Spawn(definition); }
+        // Moves object `id` so its box's top-left is at the top-left of `bounds`. Used to keep
+        // an art-only object on a hitbox the level's own script moves (see Level 1's
+        // SyncObjects). Returns false when there is no object with that id.
+        bool PlaceObject(const std::string &id, Rectangle bounds);
+        // Gives object `id` the level's own drawing, used until its sprite exists in Game
+        // Data. `draw` gets the object's box. Call it in the level's constructor.
+        bool SetStandIn(const std::string &id, std::function<void(Rectangle bounds)> draw);
         bool RemoveObject(const std::string &id) { return objects.Remove(id); }
         bool CanSay() const;
         // Returns 0 if busy. Use CanSay in polling event conditions to retry.
@@ -142,7 +165,13 @@ namespace rage {
         virtual void OnUpdate(float, const InputFrame &) {
         }
 
+        // Drawing happens in this order: DrawWorld, then the sprites of the level's objects,
+        // then DrawWorldFront, then the player. Put scenery that must cover object sprites,
+        // such as a tunnel wall that hides cars, in DrawWorldFront; the player stays in front.
         virtual void DrawWorld(const Resources &) const {
+        }
+
+        virtual void DrawWorldFront(const Resources &) const {
         }
 
         virtual void DrawHud(const Resources &) const {
@@ -198,6 +227,7 @@ namespace rage {
         std::vector<Collider> scriptShapes;
         std::vector<CollisionContact> scriptContacts;
         std::vector<CollisionContact> previousScriptContacts;
+        std::vector<std::string> unmatchedSprites;
         Rectangle scriptPlayerFrom{};
         Vector2 respawnPoint{};
         bool levelComplete = false;

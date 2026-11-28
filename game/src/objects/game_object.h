@@ -81,7 +81,51 @@ namespace rage {
         bool lethal = true;
         // Kinematic paths push actors; opt in to blocking against the environment.
         bool collideWithEnvironment = false;
+        // What to draw while the Asset ID has no Game Data row yet: true
+        // draws the placeholder box, false draws nothing. Use false when
+        // the level still draws its own stand-in shape (Level 1's
+        // DrawWorld); the sprite replaces it once the row exists.
+        bool drawPlaceholder = true;
     };
+
+    // Shortcuts for the two most common objects, so a level's .objects list
+    // stays one short line per object. `bounds` is {x, y, width, height} in
+    // world pixels, with x/y the top-left. For anything else (hazards,
+    // triggers, moving or falling objects) write the full definition:
+    //   {.id = "spikes-1", .type = ObjectType::Hazard, .collision = CollisionType::Hazard, ...}
+
+    // Something to stand on. An empty assetId ("") gives it collision but no
+    // sprite, for platforms the level draws itself. active = false starts it
+    // switched off until the level calls ActivateObject (Level 1's wrecks).
+    inline GameObjectDefinition SolidPlatform(const char *id, Rectangle bounds,
+                                              const char *assetId = "platform", bool active = true) {
+        return {
+            .id = id,
+            .type = ObjectType::Static,
+            .collision = CollisionType::Solid,
+            .position = {bounds.x, bounds.y},
+            .size = {bounds.width, bounds.height},
+            .assetId = assetId,
+            .active = active
+        };
+    }
+
+    // Art only: draws assetId's sprite with no collision. For things whose
+    // hits the level checks itself, or that its script moves (call
+    // SetPosition on it each frame from OnUpdate). No placeholder is
+    // drawn while the art is missing, so a stand-in the level draws stays
+    // visible until the Game Data row is added.
+    inline GameObjectDefinition ArtObject(const char *id, Rectangle bounds, const char *assetId) {
+        return {
+            .id = id,
+            .type = ObjectType::Static,
+            .collision = CollisionType::None,
+            .position = {bounds.x, bounds.y},
+            .size = {bounds.width, bounds.height},
+            .assetId = assetId,
+            .drawPlaceholder = false
+        };
+    }
 
     // Shared base for every game object. Objects only carry the
     // behaviour they need: a static platform uses the base Update
@@ -152,6 +196,23 @@ namespace rage {
         void SetVisible(bool value) { visible = value; }
         bool IsTriggered() const { return triggered; }
 
+        // The Game Data Asset ID. Levels assign these in their sprites file
+        // (level_<n>_sprites.cpp); Level applies them when the level loads.
+        void SetAssetId(std::string assetId) { definition.assetId = std::move(assetId); }
+        // The level's own drawing of this object, given the object's box. It is drawn
+        // instead of a sprite until the object's Asset ID has a Game Data row.
+        void SetStandIn(std::function<void(Rectangle bounds)> draw) { standIn = std::move(draw); }
+        bool HasStandIn() const { return static_cast<bool>(standIn); }
+        // Which way the object faces now; the sprite is mirrored when this is the
+        // opposite of its row's Faces value.
+        void SetFacing(Facing value) { facing = value; }
+        // Shows the animation `seconds` into its current state, for effects the level
+        // times itself (a puff's age), so they start from their first frame.
+        void SetAnimationTime(double seconds) {
+            animator.Restart();
+            animator.Update(static_cast<float>(seconds));
+        }
+
     protected:
         GameObjectDefinition definition;
         Vector2 position;
@@ -163,5 +224,7 @@ namespace rage {
         bool actionCompleted = false;
         Vector2 initialPosition;
         Vector2 initialVelocity;
+        std::function<void(Rectangle)> standIn;
+        Facing facing = Facing::None;
     };
 }

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <utility>
 
 namespace rage {
@@ -165,23 +166,9 @@ namespace rage {
             const float phase = WirePhase(i, elapsed);
             return phase >= 0.65f && phase < 1.15f;
         }
-        // The merged engine owns solid collision through ObjectManager.
-        // Local helper keeps each authored ledge a concise GameObjectDefinition.
-        GameObjectDefinition SolidPlatform(const char* id, Rectangle bounds,
-                                           const char* assetId = "", bool active = true) {
-            return {
-                .id = id,
-                .type = ObjectType::Static,
-                .collision = CollisionType::Solid,
-                .position = {bounds.x, bounds.y},
-                .size = {bounds.width, bounds.height},
-                .assetId = assetId,
-                .active = active
-            };
-        }
         // Clouds are top-only platforms: jump through them from below.
         GameObjectDefinition CloudPlatform(const char* id, Rectangle bounds) {
-            auto cloud = SolidPlatform(id, bounds);
+            auto cloud = SolidPlatform(id, bounds, "");
             cloud.collision = CollisionType::OneWay;
             return cloud;
         }
@@ -262,7 +249,6 @@ namespace rage {
             for (int j = 0; j < 4; ++j)
                 DrawRectangleRec({x + 4, floorY - 32 + j * 8, 10, 4}, {234, 194, 100, 255});
             DrawRectangleRounded({x + 46, top + 23, 138, 28}, 0.18f, 4, {48, 63, 81, 255});
-            DrawText("TRAFFIC TUNNEL", static_cast<int>(x + 53), static_cast<int>(top + 31), 12, RAYWHITE);
             DrawRectangleRec({x + 16, floorY - 5, width - 16, 5}, seam);
         }
 
@@ -277,7 +263,6 @@ namespace rage {
             // Mask any car pixels still above the deck just inside the mouth.
             DrawRectangleRec({roadStart - 17, floorY - 5, 17, 15}, {191, 199, 206, 255});
             DrawRectangleRounded({roadStart - 116, floorY + 23, 91, 20}, 0.2f, 4, {48, 63, 81, 255});
-            DrawText("< UNDERPASS", static_cast<int>(roadStart - 110), static_cast<int>(floorY + 29), 11, RAYWHITE);
         }
 
         // A damaged station wagon, with a flat roof that exactly spans the
@@ -337,13 +322,20 @@ namespace rage {
             DrawRectangleRec({center - width / 2 - 3, floorY - 5, width + 6, 5}, {83, 91, 103, 255});
         }
 
-        void DrawCrashBlast(Vector2 impact, float seconds) {
+        struct Blast {
+            Vector2 center;
+            float radius, opacity;
+        };
+        Blast BlastAt(Vector2 impact, float seconds) {
             const float t = seconds / blastDuration;
-            if (t >= 1) return;
             const float expansion = 1 - (1 - t) * (1 - t);
-            const float radius = 18 + 100 * expansion;
-            const float opacity = 1 - t * t;
-            const Vector2 center{impact.x, impact.y - 23 * expansion};
+            return {{impact.x, impact.y - 23 * expansion}, 18 + 100 * expansion, 1 - t * t};
+        }
+        // The blast's shapes; its "CRASH!" text is drawn with the level's other text.
+        void DrawCrashBlast(const Blast& blast) {
+            const Vector2 center = blast.center;
+            const float radius = blast.radius;
+            const float opacity = blast.opacity;
             DrawRing(center, radius + 2, radius + 5, 0, 360, 64, Fade(GOLD, opacity));
             for (int i = 0; i < 10; ++i) {
                 const float angle = i * 2 * PI / 10;
@@ -358,8 +350,6 @@ namespace rage {
             }
             DrawCircleV(center, radius * 0.66f, Fade({255, 199, 77, 255}, opacity));
             DrawCircleV(center, radius * 0.37f, Fade({255, 246, 201, 255}, opacity));
-            DrawText("CRASH!", static_cast<int>(center.x - 49), static_cast<int>(center.y - 14),
-                     28, Fade({100, 53, 55, 255}, opacity));
         }
 
         // A smooth horizontal throw and a vertical arc share exact endpoints with
@@ -415,59 +405,75 @@ namespace rage {
         // supports the two adjacent ends at every gap, so the cables do not
         // float. The supports sit BELOW the playable wire surface: they are
         // scenery and do not introduce new ledges or change the jump gaps.
-        void DrawWireSupports() {
+        // There are N+1 masts for N wire spans. End masts sit under the outermost
+        // insulators; interior masts sit between adjacent spans.
+        struct WireMast {
+            bool hasLeft, hasRight;
+            Rectangle left, right;
+            float leftX, rightX, center, top;
+        };
+        WireMast WireMastAt(std::size_t i) {
+            WireMast m{};
+            m.hasLeft = i > 0;
+            m.hasRight = i < wires.size();
+            m.left = m.hasLeft ? wires[i - 1] : wires.front();
+            m.right = m.hasRight ? wires[i] : wires.back();
+            m.leftX = m.left.x + m.left.width - 6.0f;
+            m.rightX = m.right.x + 6.0f;
+            m.center = !m.hasLeft ? m.rightX : !m.hasRight ? m.leftX : (m.leftX + m.rightX) * 0.5f;
+            // Match the existing insulator base at wire.y + 25..29.
+            m.top = !m.hasLeft ? m.right.y + 28 : !m.hasRight ? m.left.y + 28 : std::min(m.left.y, m.right.y) + 28;
+            return m;
+        }
+        // The area one mast covers, brackets included, down to its footing.
+        Rectangle WireMastBounds(std::size_t i) {
+            const WireMast m = WireMastAt(i);
+            float left = m.center - 19, right = m.center + 19;
+            if (m.hasLeft) left = std::min(left, m.leftX - 9);
+            if (m.hasRight) right = std::max(right, m.rightX + 9);
+            return {left, m.top, right - left, foundationY + 28 - m.top};
+        }
+
+        void DrawWireMast(std::size_t i) {
             const Color shadow{71, 50, 43, 255};
             const Color timber{137, 98, 71, 255};
             const Color highlight{189, 146, 106, 255};
             const Color grain{103, 71, 53, 255};
             const Color steel{65, 78, 94, 255};
             const Color bolt{183, 195, 202, 255};
+            const WireMast m = WireMastAt(i);
+            const float center = m.center;
+            const float top = m.top;
 
-            // There are N+1 masts for N spans. End masts sit under the
-            // outermost insulators; interior masts sit between adjacent spans.
-            for (std::size_t i = 0; i <= wires.size(); ++i) {
-                const bool hasLeft = i > 0;
-                const bool hasRight = i < wires.size();
-                const Rectangle left = hasLeft ? wires[i - 1] : wires.front();
-                const Rectangle right = hasRight ? wires[i] : wires.back();
-                const float leftX = left.x + left.width - 6.0f;
-                const float rightX = right.x + 6.0f;
-                const float center = !hasLeft ? rightX : !hasRight ? leftX
-                    : (leftX + rightX) * 0.5f;
-                // Match the existing insulator base at wire.y + 25..29.
-                const float top = !hasLeft ? right.y + 28 : !hasRight ? left.y + 28
-                    : std::min(left.y, right.y) + 28;
-
-                // Concrete footing reaches the world boundary. No solid
-                // ground is added beneath the sky section.
-                DrawRectangleRec({center - 19, foundationY, 38, 28}, {79, 89, 101, 255});
-                DrawRectangleRec({center - 19, foundationY, 38, 4}, {153, 166, 174, 255});
-                DrawRectangleRec({center - 11, top, 22, foundationY - top}, shadow);
-                DrawRectangleRec({center - 9, top, 16, foundationY - top}, timber);
-                DrawRectangleRec({center - 8, top, 3, foundationY - top}, highlight);
-                for (float y = top + 42; y < foundationY - 24; y += 64) {
-                    DrawLineEx({center + 2, y}, {center - 1, y + 23}, 1.5f, grain);
-                }
-                DrawRectangleRec({center - 13, foundationY - 18, 26, 9}, steel);
-
-                // Staggered steel brackets follow the height of each span.
-                // Their upper faces stay below the wire and insulator base.
-                const auto attach = [&](float x, float wireY) {
-                    const float seatY = wireY + 28.0f;
-                    const float minX = std::min(center, x) - 9.0f;
-                    const float width = std::abs(x - center) + 18.0f;
-                    if (std::abs(x - center) > 1.0f) {
-                        DrawLineEx({x, seatY + 7}, {center, seatY + 38}, 6, shadow);
-                        DrawLineEx({x, seatY + 7}, {center, seatY + 38}, 2, highlight);
-                    }
-                    DrawRectangleRec({minX, seatY, width, 9}, shadow);
-                    DrawRectangleRec({minX, seatY, width, 3}, highlight);
-                    DrawRectangleRec({x - 9, seatY, 18, 5}, steel);
-                    DrawCircle(static_cast<int>(center), static_cast<int>(seatY + 5), 2, bolt);
-                };
-                if (hasLeft) attach(leftX, left.y);
-                if (hasRight) attach(rightX, right.y);
+            // Concrete footing reaches the world boundary. No solid
+            // ground is added beneath the sky section.
+            DrawRectangleRec({center - 19, foundationY, 38, 28}, {79, 89, 101, 255});
+            DrawRectangleRec({center - 19, foundationY, 38, 4}, {153, 166, 174, 255});
+            DrawRectangleRec({center - 11, top, 22, foundationY - top}, shadow);
+            DrawRectangleRec({center - 9, top, 16, foundationY - top}, timber);
+            DrawRectangleRec({center - 8, top, 3, foundationY - top}, highlight);
+            for (float y = top + 42; y < foundationY - 24; y += 64) {
+                DrawLineEx({center + 2, y}, {center - 1, y + 23}, 1.5f, grain);
             }
+            DrawRectangleRec({center - 13, foundationY - 18, 26, 9}, steel);
+
+            // Staggered steel brackets follow the height of each span.
+            // Their upper faces stay below the wire and insulator base.
+            const auto attach = [&](float x, float wireY) {
+                const float seatY = wireY + 28.0f;
+                const float minX = std::min(center, x) - 9.0f;
+                const float width = std::abs(x - center) + 18.0f;
+                if (std::abs(x - center) > 1.0f) {
+                    DrawLineEx({x, seatY + 7}, {center, seatY + 38}, 6, shadow);
+                    DrawLineEx({x, seatY + 7}, {center, seatY + 38}, 2, highlight);
+                }
+                DrawRectangleRec({minX, seatY, width, 9}, shadow);
+                DrawRectangleRec({minX, seatY, width, 3}, highlight);
+                DrawRectangleRec({x - 9, seatY, 18, 5}, steel);
+                DrawCircle(static_cast<int>(center), static_cast<int>(seatY + 5), 2, bolt);
+            };
+            if (m.hasLeft) attach(m.leftX, m.left.y);
+            if (m.hasRight) attach(m.rightX, m.right.y);
         }
 
         void DrawElectricWire(Rectangle w, bool warning, bool live, float elapsed) {
@@ -532,6 +538,150 @@ namespace rage {
             }
             DrawRectangleRec({p.x + 8, p.y, p.width - 16, 3}, light);
         }
+
+        // ---- Every visible thing in Level 1 is an object, so a sprite can replace its
+        // drawing. Their Asset IDs are assigned in level_1_sprites.cpp; until a thing has a
+        // Game Data row, its original drawing (its stand-in, see SetUpStandIns) is used.
+        constexpr std::array<int, 5> lightXs{780, 1170, 1560, 1950, 2340};
+        constexpr std::array<const char*, 5> lightIds{
+            "traffic-light-1", "traffic-light-2", "traffic-light-3", "traffic-light-4", "traffic-light-5"};
+        constexpr std::array<Rectangle, 5> carStart{{
+            {760.0f, 1428.0f, 108.0f, 52.0f},
+            {1240.0f, 1428.0f, 116.0f, 52.0f},
+            {1710.0f, 1428.0f, 120.0f, 52.0f},
+            {2330.0f, floorY - 48, 104, 48},
+            {tunnelSpawnX, floorY - 38, 86, 38}
+        }};
+        constexpr std::array<const char*, 5> carIds{"car-1", "car-2", "car-3", "car-4", "car-5"};
+        constexpr std::array<const char*, 3> wreckCarIds{"wreck-car-1", "wreck-car-2", "wreck-car-3"};
+        constexpr std::array<const char*, 3> cableIds{"cable-1", "cable-2", "cable-3"}; // Drawn over wire-1 to wire-3.
+        constexpr std::size_t gasSlots = 16; // Puffs on screen at once; extra puffs are not drawn.
+        constexpr std::size_t pigSlots = 5;  // UpdatePigs never keeps more than 5.
+        constexpr std::size_t starCount = 9; // Level1::stars.
+        constexpr Color rainbowColors[] = {
+            {247, 110, 117, 255}, {249, 164, 99, 255}, {252, 216, 111, 255},
+            {136, 216, 146, 255}, {122, 190, 247, 255}, {176, 151, 222, 255}
+        };
+        constexpr Color gateTrim{43, 53, 78, 255};
+        constexpr Color scrapColors[] = {{112, 115, 132, 255}, {132, 107, 111, 255}, {103, 125, 139, 255}};
+
+        std::string NumberedId(const char* prefix, std::size_t index) {
+            return std::string(prefix) + std::to_string(index + 1);
+        }
+
+        // The wreck pile: smaller scrap cars stacked under each roof, in drawing order.
+        struct ScrapPiece {
+            std::size_t roof;
+            int layer;
+            float y;
+        };
+        const std::vector<ScrapPiece>& ScrapPieces() {
+            static const std::vector<ScrapPiece> pieces = [] {
+                std::vector<ScrapPiece> list;
+                for (std::size_t i = 0; i < wreckSteps.size(); ++i) {
+                    int layer = 0;
+                    for (float y = floorY - 50; y > wreckSteps[i].y + 34; y -= 42, ++layer) list.push_back({i, layer, y});
+                }
+                return list;
+            }();
+            return pieces;
+        }
+        Rectangle ScrapSlot(const ScrapPiece& piece) {
+            const Rectangle roof = wreckSteps[piece.roof];
+            const float shift = piece.layer % 2 == 0 ? -3.0f : 3.0f;
+            return {roof.x - 22 + shift, piece.y, roof.width + 44, 50};
+        }
+        Rectangle WreckSlot(std::size_t roof) {
+            return {wreckSteps[roof].x - 22, wreckSteps[roof].y, wreckSteps[roof].width + 44, 54};
+        }
+        // The slide's area: the curve from SlidePoint, plus the stripes' width.
+        Rectangle SlideArea() {
+            return {slideStart.x - 3, slideStart.y + 40, slideEnd.x - slideStart.x + 43, slideEnd.y - slideStart.y + 8};
+        }
+        Rectangle ChickenBounds(float chickenX) { return {chickenX - 13, 1439, 50, 41}; }
+        Rectangle ChickenSignBounds(float chickenX) { return {chickenX - 61, 1405, 146, 33}; }
+
+        void DrawFlyingPig(Rectangle pig, float time) {
+            rlPushMatrix();
+            rlTranslatef(pig.x, pig.y, 0);
+            rlScalef(pigScale, pigScale, 1);
+            const float flap = std::sin(time * 17.0f) * 5.0f;
+            DrawEllipse(49, 21, 34, 16, {237, 154, 174, 255});
+            DrawCircle(20, 18, 15, {244, 170, 188, 255});
+            DrawEllipse(7, 23, 8, 5, {212, 115, 144, 255});
+            DrawCircle(17, 15, 2, BLACK);
+            DrawTriangle({13, 8}, {25, 8}, {12, 0}, PINK);
+            DrawEllipse(47, static_cast<int>(9 + flap), 19, 9, RAYWHITE);
+            DrawLine(81, 19, 92, 11, PINK);
+            rlPopMatrix();
+        }
+
+        // The things that are only drawn, added after the collision objects (which draw
+        // nothing) in the order they are drawn: later ones in front. Effects start hidden.
+        std::vector<GameObjectDefinition> WithArtObjects(std::vector<GameObjectDefinition> objects) {
+            const std::vector<GameObjectDefinition> solid = objects; // The collision objects.
+            const auto add = [&objects](const std::string& id, Rectangle box, bool visible = true) {
+                auto object = ArtObject(id.c_str(), box, "");
+                object.visible = visible;
+                objects.push_back(object);
+            };
+            // Street level, back to front.
+            add("road", {roadStart, floorY, tunnelEndX - roadStart, 120});
+            add("underpass-road", {roadStart, floorY - 12, rampStartX - roadStart, 132});
+            add("tunnel-back", {tunnelEntranceX - 26, floorY - 103, 70, 103});
+            add("sign-school", {494, 1342, 82, floorY - 1342});
+            add("sign-wrong-way", {640, 1350, 100, floorY - 1350});
+            add("sign-duck", {4745, 646, 112, 22});
+            add("trash-can", trashCan);
+            add("hydrant", hydrant);
+            for (std::size_t i = 0; i < lightXs.size(); ++i)
+                add(lightIds[i], {lightXs[i] - 13.0f, 1290, 33, floorY - 1290});
+            for (std::size_t i = 0; i < carIds.size(); ++i) add(carIds[i], carStart[i]);
+            // In front of the cars, so they disappear under the sidewalk and into the tunnel.
+            add("sidewalk", {0, floorY - 5, roadStart, 125});
+            add("tunnel-front", {tunnelEntranceX - 24, floorY - 135, tunnelEndX - tunnelEntranceX + 24, 135});
+            add("chicken", ChickenBounds(tunnelEntranceX - 280));
+            add("sign-chicken", ChickenSignBounds(tunnelEntranceX - 280), false);
+            // The crash: each roof's scrap cars, then the roof car, then the blast.
+            for (std::size_t i = 0, k = 0; i < wreckSteps.size(); ++i) {
+                for (; k < ScrapPieces().size() && ScrapPieces()[k].roof == i; ++k)
+                    add(NumberedId("scrap-car-", k), ScrapSlot(ScrapPieces()[k]), false);
+                add(wreckCarIds[i], WreckSlot(i), false);
+            }
+            add("crash-blast", {0, 0, 280, 280}, false);
+            // The climb and the sky, on the collision rectangles they belong to.
+            const auto box = [](const GameObjectDefinition& o) { return Rectangle{o.position.x, o.position.y, o.size.x, o.size.y}; };
+            std::size_t poles = 0;
+            for (const auto& o : solid)
+                if (o.id.rfind("telephone-step-", 0) == 0 || o.id == "sky-checkpoint-ledge")
+                    add(NumberedId("utility-pole-", poles++), box(o));
+            for (std::size_t i = 0; i <= wires.size(); ++i) add(NumberedId("wire-mast-", i), WireMastBounds(i));
+            for (std::size_t i = 0; i < wires.size(); ++i) add(cableIds[i], wires[i]);
+            // Cloud refuges above the wires, then the clouds; the flag stands on the first cloud.
+            std::size_t clouds = 0;
+            for (const auto& o : solid)
+                if (o.id.rfind("wire-refuge-", 0) == 0) add(NumberedId("sky-cloud-", clouds++), box(o));
+            for (const auto& o : solid) {
+                if (o.id.rfind("cloud-", 0) != 0 && o.id != "rainbow-entrance") continue;
+                add(NumberedId("sky-cloud-", clouds++), box(o));
+                if (o.id == "cloud-1") add("checkpoint-flag", {o.position.x + 4, o.position.y - 27, 24, 27});
+            }
+            for (std::size_t i = 0; i < gasSlots; ++i) add(NumberedId("gas-", i), {0, 0, 186, 161}, false);
+            for (std::size_t i = 0; i < pigSlots; ++i) add(NumberedId("pig-", i), {0, 0, 94 * pigScale, 38 * pigScale}, false);
+            for (std::size_t i = 0; i < starCount; ++i) {
+                add(NumberedId("star-warning-", i), {0, 0, 28, worldViewport.height / 2 - 2}, false);
+                add(NumberedId("falling-star-", i), {0, 0, 34, 82}, false);
+            }
+            // The rainbow and the campus.
+            add("rainbow-slide", SlideArea());
+            add("rainbow-gate", {rainbowGate.x - 2, rainbowGate.y - 2, 12, rainbowGate.height + 4});
+            add("sign-rainbow", {rainbowGate.x + 6, rainbowEntrance.y - 38, 132, 24});
+            add("campus-path", {6880, floorY, 325, 120});
+            add("lecture-hall", {6975, 1245, 250, floorY - 1245});
+            add("anvil", {7049, 1200, 124, 44}, false);
+            add("anvil-poof", {7019, 1160, 184, 84}, false);
+            return objects;
+        }
     }
 
     const LevelDefinition& Level1Definition() {
@@ -559,19 +709,21 @@ namespace rage {
             .spawn = {100.0f, 1436.0f},
             // The merged GameObject system replaces LevelDefinition::platforms.
             // Authored collision geometry is independent of the procedural artwork.
-            .objects = {
-                SolidPlatform("sidewalk-road", {0, floorY, tunnelEndX, 120}),
+            // SolidPlatform and ArtObject are shared shortcuts (objects/game_object.h).
+            // Level 1 draws its own platforms, so they pass "" (no sprite).
+            .objects = WithArtObjects({
+                SolidPlatform("sidewalk-road", {0, floorY, tunnelEndX, 120}, ""),
                 SolidPlatform(wreckIds[0], wreckSteps[0], "", false),
                 SolidPlatform(wreckIds[1], wreckSteps[1], "", false),
                 SolidPlatform(wreckIds[2], wreckSteps[2], "", false),
-                SolidPlatform("telephone-step-1", {3172, 1148, 52, 18}),
-                SolidPlatform("telephone-step-2", {3309, 1070, 52, 18}),
-                SolidPlatform("telephone-step-3", {3448, 992, 52, 18}),
-                SolidPlatform("telephone-step-4", {3588, 914, 52, 18}),
-                SolidPlatform("sky-checkpoint-ledge", {3718, 832, 100, 18}),
-                SolidPlatform("wire-1", wires[0]),
-                SolidPlatform("wire-2", wires[1]),
-                SolidPlatform("wire-3", wires[2]),
+                SolidPlatform("telephone-step-1", {3172, 1148, 52, 18}, ""),
+                SolidPlatform("telephone-step-2", {3309, 1070, 52, 18}, ""),
+                SolidPlatform("telephone-step-3", {3448, 992, 52, 18}, ""),
+                SolidPlatform("telephone-step-4", {3588, 914, 52, 18}, ""),
+                SolidPlatform("sky-checkpoint-ledge", {3718, 832, 100, 18}, ""),
+                SolidPlatform("wire-1", wires[0], ""),
+                SolidPlatform("wire-2", wires[1], ""),
+                SolidPlatform("wire-3", wires[2], ""),
                 CloudPlatform("wire-refuge-1", refuges[0]),
                 CloudPlatform("wire-refuge-2", refuges[1]),
                 CloudPlatform("wire-refuge-3", refuges[2]),
@@ -598,13 +750,15 @@ namespace rage {
                 CloudPlatform("cloud-lower-6", {6240, 810, 195, 22}),
                 CloudPlatform("cloud-lower-7", {6510, 855, 145, 22}),
                 CloudPlatform("rainbow-entrance", rainbowEntrance),
-                SolidPlatform("campus-sidewalk", {6880, floorY, 325, 120}),
+                SolidPlatform("campus-sidewalk", {6880, floorY, 325, 120}, ""),
                 {.id = anvilId, .type = ObjectType::Moving, .collision = CollisionType::None,
                  .position = {7049, 1200}, .size = {124, 44}, .velocity = {0, 660},
                  .range = {0, floorY - 44 - 1200}, .falls = true, .active = false},
                 {.id = exitId, .type = ObjectType::Trigger, .collision = CollisionType::Trigger,
                  .position = {7080, 1375}, .size = {75, 105}, .active = false, .triggerOnce = true}
-            }
+            }),
+            // Asset IDs for the objects above: level_1_sprites.cpp.
+            .sprites = Level1Sprites()
         };
         return definition;
     }
@@ -615,15 +769,16 @@ namespace rage {
         Bird(PoleFlight{{3610, 882}, 2.5f, 4.6f})
     } {
         for (auto& event : CreateEvents()) Events().RegisterEvent(std::move(event));
+        SetUpStandIns();
     }
 
     void Level1::ResetTraffic() {
         traffic = {{
-            {{760.0f, 1428.0f, 108.0f, 52.0f}, -195.0f, {223, 96, 91, 255}},
-            {{1240.0f, 1428.0f, 116.0f, 52.0f}, -165.0f, {240, 189, 88, 255}},
-            {{1710.0f, 1428.0f, 120.0f, 52.0f}, -225.0f, {141, 122, 207, 255}},
-            {{2330.0f, floorY - 48, 104, 48}, -210.0f, {93, 180, 198, 255}},
-            {{tunnelSpawnX, floorY - 38, 86, 38}, 0.0f, {150, 236, 78, 255}}
+            {carStart[0], -195.0f, {223, 96, 91, 255}},
+            {carStart[1], -165.0f, {240, 189, 88, 255}},
+            {carStart[2], -225.0f, {141, 122, 207, 255}},
+            {carStart[3], -210.0f, {93, 180, 198, 255}},
+            {carStart[4], 0.0f, {150, 236, 78, 255}}
         }};
         speederDelay = GetRandomValue(15, 110) / 100.0f;
         chickenX = tunnelEntranceX - 280;
@@ -652,6 +807,7 @@ namespace rage {
         sliding = false;
         slideFinished = false;
         campusReached = false;
+        SyncObjects();
     }
 
     void Level1::Respawn(const char* notification) {
@@ -749,6 +905,90 @@ namespace rage {
     }
 
     void Level1::OnUpdate(float dt, const InputFrame& input) {
+        UpdateScript(dt, input);
+        SyncObjects(); // After the script, whichever way it returned, so sprites never lag.
+    }
+
+    void Level1::SyncObjects() {
+        // Keeps each drawn-only object on the thing this script moves, and shows it only
+        // while that thing is on screen, the same as the original drawing.
+        const auto object = [this](const std::string& id) { return Objects().Get(id); };
+        const auto show = [&](const std::string& id, bool visible, Rectangle box) {
+            if (auto* o = object(id)) {
+                o->SetVisible(visible);
+                o->SetPosition({box.x, box.y});
+            }
+        };
+        // For things whose drawn size changes (wrecks in flight, puffs), the object's box
+        // keeps its size and stays centred on them.
+        const auto showCentred = [&](const std::string& id, bool visible, Rectangle area) {
+            if (auto* o = object(id)) {
+                const Vector2 size = o->Size();
+                show(id, visible, {area.x + area.width / 2 - size.x / 2, area.y + area.height / 2 - size.y / 2,
+                                   size.x, size.y});
+            }
+        };
+        const float time = ElapsedSeconds();
+
+        for (std::size_t i = 0; i < lightXs.size(); ++i)
+            if (auto* light = object(lightIds[i])) light->SetState(LightGreen(lightXs[i]) ? "green" : "red");
+        // While the two crash cars approach, only they are drawn ("car_crash" when it exists).
+        const bool crashApproach = pileupStarted && pileupSeconds >= 0;
+        for (std::size_t i = 0; i < traffic.size(); ++i) {
+            const bool crashCar = crashApproach && (i == 1 || i == 2);
+            show(carIds[i], !crashImpact && (!crashApproach || crashCar), traffic[i].bounds);
+            if (auto* car = object(carIds[i])) car->SetState(crashCar ? "crash" : "idle");
+        }
+        show("chicken", !pileupSettled, ChickenBounds(chickenX));
+        show("sign-chicken", !pileupSettled && pileupStarted && !crashImpact, ChickenSignBounds(chickenX));
+        for (std::size_t k = 0; k < ScrapPieces().size(); ++k) {
+            float progress = 0;
+            const Rectangle body = ScrapBody(k, &progress);
+            showCentred(NumberedId("scrap-car-", k), crashImpact && progress > 0, body);
+        }
+        for (std::size_t i = 0; i < wreckCarIds.size(); ++i) {
+            const Rectangle body = WreckBody(i);
+            showCentred(wreckCarIds[i], crashImpact && body.width > 0, body);
+        }
+        const Blast blast = BlastAt(CrashImpact(), pileupSeconds);
+        showCentred("crash-blast", crashImpact && pileupSeconds < blastDuration, {blast.center.x, blast.center.y, 0, 0});
+        if (auto* o = object("crash-blast")) o->SetAnimationTime(std::max(0.0f, pileupSeconds));
+
+        for (std::size_t i = 0; i < wires.size(); ++i) {
+            const int w = static_cast<int>(i);
+            if (auto* wire = object(cableIds[i]))
+                wire->SetState(WireLive(w, time) ? "live" : WireWarning(w, time) ? "warning" : "idle");
+        }
+        if (auto* flag = object("checkpoint-flag")) flag->SetState(checkpoint.x >= firstCloud.x ? "reached" : "idle");
+        for (std::size_t k = 0; k < gasSlots; ++k) {
+            const bool used = k < gasPuffs.size();
+            const Vector2 center = used ? gasPuffs[k].center : Vector2{};
+            showCentred(NumberedId("gas-", k), used, {center.x, center.y, 0, 0});
+            if (auto* o = object(NumberedId("gas-", k)); o && used) o->SetAnimationTime(gasPuffs[k].age);
+        }
+        for (std::size_t k = 0; k < pigSlots; ++k)
+            show(NumberedId("pig-", k), k < pigs.size(), k < pigs.size() ? pigs[k].bounds : Rectangle{});
+        const Rectangle player = GetPlayer().Bounds();
+        const float halfView = worldViewport.height / (2 * Camera().zoom);
+        const float viewTop = Camera().target.y - halfView + 16;
+        for (std::size_t k = 0; k < stars.size(); ++k) {
+            const auto& star = stars[k];
+            const bool warning = star.warned && !star.falling && !star.finished
+                && InCloudSection(star.x) && InCloudSection(player.x);
+            show(NumberedId("star-warning-", k), warning, {star.x - 14, viewTop - 14, 28, 0});
+            show(NumberedId("falling-star-", k), star.falling, {star.x - 17, star.y - 65, 34, 82});
+        }
+        if (const auto* anvil = Objects().Get(anvilId)) {
+            const Rectangle b = anvil->Bounds();
+            const float since = ElapsedSeconds() - anvilLandedAt;
+            show("anvil", anvil->IsActive(), b);
+            show("anvil-poof", !anvil->IsActive() && anvil->IsTriggered() && since < anvilPoofDuration,
+                 {b.x - 30, b.y - 40, b.width + 60, b.height + 40});
+            if (auto* poof = object("anvil-poof")) poof->SetAnimationTime(std::max(0.0f, since));
+        }
+    }
+
+    void Level1::UpdateScript(float dt, const InputFrame&) {
         timer.Update(dt);
         for (auto& bird : birds) bird.Update(dt, ElapsedSeconds(), GetPlayer().Bounds());
         dt = std::min(dt, 0.1f); // Match the physics engine maximum step.
@@ -935,37 +1175,14 @@ namespace rage {
         }
     }
 
-    void Level1::DrawPileup() const {
-        const auto& follower = traffic[2].bounds;
-        const Vector2 impact{follower.x, follower.y + follower.height * 0.45f};
-        const Rectangle debrisOrigin{impact.x, impact.y, 0, 0};
-        constexpr Color scrapColors[] = {{112, 115, 132, 255}, {132, 107, 111, 255}, {103, 125, 139, 255}};
-
-        for (std::size_t i = 0; i < wreckSteps.size(); ++i) {
-            const Rectangle roof = wreckSteps[i];
-            const float elapsed = pileupSeconds - i * wreckStagger;
-            const float t = std::clamp(elapsed / wreckFlightSeconds, 0.0f, 1.0f);
-            int layer = 0;
-            for (float y = floorY - 50; y > roof.y + 34; y -= 42, ++layer) {
-                // The low layers land first, underneath the car that forms the roof.
-                const float supportT = std::clamp(elapsed / (0.75f + layer * 0.09f), 0.0f, 1.0f);
-                if (supportT <= 0) continue;
-                const float shift = layer % 2 == 0 ? -3.0f : 3.0f;
-                const Rectangle slot{roof.x - 22 + shift, y, roof.width + 44, 50};
-                const Rectangle body = WreckFlight(debrisOrigin, slot, supportT, 35 + 9 * layer);
-                rlPushMatrix();
-                rlTranslatef(body.x, body.y, 0);
-                rlScalef(body.width / slot.width, body.height / slot.height, 1);
-                DrawCar({0, 0, slot.width, slot.height}, scrapColors[(i + layer) % 3]);
-                rlPopMatrix();
-            }
-            const auto& car = traffic[(i + 1) % wreckSteps.size()];
-            const Rectangle source = i < 2 ? car.bounds : debrisOrigin;
-            const Rectangle slot{roof.x - 22, roof.y, roof.width + 44, 54};
-            const Rectangle body = WreckFlight(source, slot, t, 80 + 18 * i);
-            if (body.width > 0) DrawCrashCar(body, car.color, roof.width, std::min(1.0f, t * 5), -18 * std::sin(PI * t));
-        }
-        DrawCrashBlast(impact, pileupSeconds);
+    bool Level1::LightGreen(int x) const {
+        // Traffic lights do not perfectly agree with the approaching cars.
+        const bool carNear = !crashImpact && std::any_of(traffic.begin(), traffic.end(), [x](const Vehicle& car) {
+            const Rectangle visible = VisibleRoadCar(car.bounds);
+            const float distance = visible.x - x;
+            return visible.width > 0 && distance > -110 && distance < 230;
+        });
+        return SignalGreen(static_cast<float>(x), ElapsedSeconds(), carNear);
     }
 
     void Level1::SubmitSprites(RenderQueue& queue, const Resources& resources) const {
@@ -973,65 +1190,97 @@ namespace rage {
         for (const auto& bird : birds) bird.SubmitSprites(queue, resources.Assets(), Camera().zoom);
     }
 
-    void Level1::DrawWorld(const Resources&) const {
+    Vector2 Level1::CrashImpact() const {
+        const auto& follower = traffic[2].bounds;
+        return {follower.x, follower.y + follower.height * 0.45f};
+    }
+
+    // A smooth horizontal throw and a vertical arc share exact endpoints with the
+    // resting artwork. The flash hides the launch of the smaller scrap cars.
+    Rectangle Level1::ScrapBody(std::size_t piece, float* progress) const {
+        const ScrapPiece& p = ScrapPieces()[piece];
+        const float elapsed = pileupSeconds - p.roof * wreckStagger;
+        // The low layers land first, underneath the car that forms the roof.
+        const float supportT = std::clamp(elapsed / (0.75f + p.layer * 0.09f), 0.0f, 1.0f);
+        if (progress) *progress = supportT;
+        const Vector2 impact = CrashImpact();
+        return WreckFlight({impact.x, impact.y, 0, 0}, ScrapSlot(p), supportT, 35 + 9 * p.layer);
+    }
+
+    Rectangle Level1::WreckBody(std::size_t roof, float* progress) const {
+        const float elapsed = pileupSeconds - roof * wreckStagger;
+        const float t = std::clamp(elapsed / wreckFlightSeconds, 0.0f, 1.0f);
+        if (progress) *progress = t;
+        const Vector2 impact = CrashImpact();
+        const auto& car = traffic[(roof + 1) % wreckSteps.size()];
+        const Rectangle source = roof < 2 ? car.bounds : Rectangle{impact.x, impact.y, 0, 0};
+        return WreckFlight(source, WreckSlot(roof), t, 80 + 18 * roof);
+    }
+
+    void Level1::SetUpStandIns() {
+        // Each thing's own drawing, used until its Asset ID has a Game Data row. Objects
+        // draw in the order they are created (WithArtObjects), so the layering is unchanged.
+        static_assert(std::tuple_size_v<decltype(stars)> == starCount);
+        const auto stand = [this](const std::string& id, std::function<void(Rectangle)> draw) {
+            SetStandIn(id, std::move(draw));
+        };
+
         // An ordinary sidewalk abruptly meets an oncoming carriageway.
-        DrawRectangleRec({0, floorY, 580, 120}, {108, 119, 133, 255});
-        DrawRectangleRec({0, floorY, 580, 10}, {191, 199, 206, 255});
-        for (int x = 0; x < 580; x += 72)
-            DrawLine(x, 1488, x, 1520, {76, 91, 108, 255});
-        DrawRectangleRec({roadStart, floorY, tunnelEndX - roadStart, 120}, {49, 55, 70, 255});
-        DrawRectangleRec({roadStart, floorY, tunnelEndX - roadStart, 5}, {105, 113, 126, 255});
-        for (int x = 660; x < tunnelEndX; x += 150)
-            DrawRectangleRec({static_cast<float>(x), 1528, 85, 5}, {241, 216, 130, 255});
-        DrawUnderpassRoad();
-        DrawTunnelBackdrop();
-        DrawStreetPost(534.5f, 1378, 5);
-        DrawRectangleRounded({494, 1342, 82, 36}, 0.15f, 4, {57, 110, 142, 255});
-        DrawText("SCHOOL >", 500, 1353, 12, RAYWHITE);
-        DrawStreetPost(690, 1380, 5);
-        DrawRectangleRounded({640, 1350, 100, 30}, 0.15f, 4, {176, 66, 70, 255});
-        DrawText("< WRONG WAY", 646, 1359, 12, RAYWHITE);
-        DrawText("CHECKPOINT", 3703, 810, 14, RAYWHITE);
-        DrawRectangleRounded({4745, 646, 112, 22}, 0.2f, 4, {43, 59, 79, 235});
-        DrawText("HOLD S: DUCK", 4750, 652, 13, RAYWHITE);
+        stand("road", [](Rectangle) {
+            DrawRectangleRec({roadStart, floorY, tunnelEndX - roadStart, 120}, {49, 55, 70, 255});
+            DrawRectangleRec({roadStart, floorY, tunnelEndX - roadStart, 5}, {105, 113, 126, 255});
+            for (int x = 660; x < tunnelEndX; x += 150)
+                DrawRectangleRec({static_cast<float>(x), 1528, 85, 5}, {241, 216, 130, 255});
+        });
+        stand("underpass-road", [](Rectangle) { DrawUnderpassRoad(); });
+        stand("tunnel-back", [](Rectangle) { DrawTunnelBackdrop(); });
+        stand("sign-school", [](Rectangle) {
+            DrawStreetPost(534.5f, 1378, 5);
+            DrawRectangleRounded({494, 1342, 82, 36}, 0.15f, 4, {57, 110, 142, 255});
+        });
+        stand("sign-wrong-way", [](Rectangle) {
+            DrawStreetPost(690, 1380, 5);
+            DrawRectangleRounded({640, 1350, 100, 30}, 0.15f, 4, {176, 66, 70, 255});
+        });
+        stand("sign-duck", [](Rectangle) {
+            DrawRectangleRounded({4745, 646, 112, 22}, 0.2f, 4, {43, 59, 79, 235});
+        });
         // Sidewalk hazards: clear silhouettes and consistent collision bounds.
-        DrawRectangleRounded(trashCan, 0.16f, 6, {69, 116, 109, 255});
-        for (int x = 270; x <= 296; x += 8)
-            DrawRectangleRec({static_cast<float>(x), 1435, 3, 39}, {108, 151, 142, 255});
-        DrawRectangleRounded({255, 1423, 56, 9}, 0.4f, 6, {126, 165, 154, 255});
-        DrawRectangleRec({277, 1419, 12, 5}, {69, 116, 109, 255});
-        DrawRectangleRounded(hydrant, 0.35f, 6, {201, 68, 80, 255});
-        DrawCircle(464, 1439, 14, {236, 106, 106, 255});
-        DrawCircle(450, 1454, 7, {234, 105, 109, 255});
-        DrawCircle(478, 1454, 7, {234, 105, 109, 255});
-        DrawRectangleRec({445, 1474, 38, 6}, {152, 46, 58, 255});
-        // Traffic lights do not perfectly agree with the approaching cars.
-        for (int x : {780, 1170, 1560, 1950, 2340}) {
-            DrawStreetPost(x + 3, 1340, 7);
-            DrawRectangleRec({static_cast<float>(x) - 13, 1290.0f, 33.0f, 55.0f}, {36, 38, 49, 255});
-            const bool carNear = !crashImpact && std::any_of(traffic.begin(), traffic.end(), [x](const Vehicle& car) {
-                const Rectangle visible = VisibleRoadCar(car.bounds);
-                const float distance = visible.x - x;
-                return visible.width > 0 && distance > -110 && distance < 230;
+        stand("trash-can", [](Rectangle) {
+            DrawRectangleRounded(trashCan, 0.16f, 6, {69, 116, 109, 255});
+            for (int x = 270; x <= 296; x += 8)
+                DrawRectangleRec({static_cast<float>(x), 1435, 3, 39}, {108, 151, 142, 255});
+            DrawRectangleRounded({255, 1423, 56, 9}, 0.4f, 6, {126, 165, 154, 255});
+            DrawRectangleRec({277, 1419, 12, 5}, {69, 116, 109, 255});
+        });
+        stand("hydrant", [](Rectangle) {
+            DrawRectangleRounded(hydrant, 0.35f, 6, {201, 68, 80, 255});
+            DrawCircle(464, 1439, 14, {236, 106, 106, 255});
+            DrawCircle(450, 1454, 7, {234, 105, 109, 255});
+            DrawCircle(478, 1454, 7, {234, 105, 109, 255});
+            DrawRectangleRec({445, 1474, 38, 6}, {152, 46, 58, 255});
+        });
+        for (std::size_t i = 0; i < lightXs.size(); ++i) {
+            stand(lightIds[i], [this, x = lightXs[i]](Rectangle) {
+                DrawStreetPost(x + 3, 1340, 7);
+                DrawRectangleRec({static_cast<float>(x) - 13, 1290.0f, 33.0f, 55.0f}, {36, 38, 49, 255});
+                const bool green = LightGreen(x);
+                DrawCircle(x + 3, 1304, 7, green ? Color{73, 78, 77, 255} : Color{235, 80, 79, 255});
+                DrawCircle(x + 3, 1328, 7, green ? Color{112, 227, 144, 255} : Color{67, 73, 65, 255});
             });
-            const bool green = SignalGreen(static_cast<float>(x), ElapsedSeconds(), carNear);
-            DrawCircle(x + 3, 1304, 7, green ? Color{73, 78, 77, 255} : Color{235, 80, 79, 255});
-            DrawCircle(x + 3, 1328, 7, green ? Color{112, 227, 144, 255} : Color{67, 73, 65, 255});
         }
-        if (!crashImpact) {
-            if (pileupStarted && pileupSeconds >= 0) {
-                DrawCrashCar(traffic[1].bounds, traffic[1].color, wreckSteps[0].width, 0);
-                DrawCrashCar(traffic[2].bounds, traffic[2].color, wreckSteps[1].width, 0);
-            } else {
-                for (const auto& car : traffic) DrawCar(car.bounds, car.color);
-            }
+        for (std::size_t i = 0; i < carIds.size(); ++i) {
+            stand(carIds[i], [this, i](Rectangle) {
+                const auto& car = traffic[i];
+                if (pileupStarted && pileupSeconds >= 0) DrawCrashCar(car.bounds, car.color, wreckSteps[i - 1].width, 0);
+                else DrawCar(car.bounds, car.color);
+            });
+            Objects().Get(carIds[i])->SetFacing(Facing::Left);
         }
-        // Draw opaque tunnel surfaces AFTER the cars, BEFORE the chicken and
-        // wreck staircase. The wrecks can still be climbed in front of the wall.
-        DrawUnderpassForeground();
-        DrawTunnelForeground();
+        stand("sidewalk", [](Rectangle) { DrawUnderpassForeground(); });
+        stand("tunnel-front", [](Rectangle) { DrawTunnelForeground(); });
         // The chicken is scenery, but its presence causes the traffic event.
-        if (!pileupSettled) {
+        stand("chicken", [this](Rectangle) {
             const int cx = static_cast<int>(chickenX);
             DrawLine(cx + 12, 1473, cx + 9, 1479, ORANGE);
             DrawLine(cx + 20, 1473, cx + 23, 1479, ORANGE);
@@ -1040,129 +1289,164 @@ namespace rage {
             DrawCircle(cx + 3, 1447, 4, RED);
             DrawCircle(cx + 1, 1452, 1, BLACK);
             DrawTriangle({chickenX - 3, 1452}, {chickenX - 13, 1455}, {chickenX - 3, 1458}, ORANGE);
-            if (pileupStarted && !crashImpact) {
-                const Color amber{255, 199, 69, 255};
-                DrawRectangleRounded({chickenX - 61, 1405, 146, 23}, 0.25f, 4, {51, 45, 49, 255});
-                DrawTriangle({chickenX + 4, 1428}, {chickenX + 12, 1438}, {chickenX + 20, 1428}, amber);
-                DrawText("CHICKEN CROSSING", cx - 53, 1411, 13, amber);
-                const auto& lead = traffic[1].bounds;
-                if (pileupSeconds >= 0 && lead.x - chickenX < 190)
-                    DrawText("BRAKE!", static_cast<int>(lead.x + 34), static_cast<int>(lead.y - 20), 16, GOLD);
-            }
+        });
+        Objects().Get("chicken")->SetFacing(Facing::Left);
+        stand("sign-chicken", [this](Rectangle) {
+            const Color amber{255, 199, 69, 255};
+            DrawRectangleRounded({chickenX - 61, 1405, 146, 23}, 0.25f, 4, {51, 45, 49, 255});
+            DrawTriangle({chickenX + 4, 1428}, {chickenX + 12, 1438}, {chickenX + 20, 1428}, amber);
+        });
+        for (std::size_t k = 0; k < ScrapPieces().size(); ++k) {
+            stand(NumberedId("scrap-car-", k), [this, k](Rectangle) {
+                const ScrapPiece& piece = ScrapPieces()[k];
+                const Rectangle slot = ScrapSlot(piece);
+                const Rectangle body = ScrapBody(k);
+                rlPushMatrix();
+                rlTranslatef(body.x, body.y, 0);
+                rlScalef(body.width / slot.width, body.height / slot.height, 1);
+                DrawCar({0, 0, slot.width, slot.height}, scrapColors[(piece.roof + piece.layer) % 3]);
+                rlPopMatrix();
+            });
         }
-        if (crashImpact) DrawPileup();
+        for (std::size_t i = 0; i < wreckCarIds.size(); ++i) {
+            stand(wreckCarIds[i], [this, i](Rectangle) {
+                float t = 0;
+                const Rectangle body = WreckBody(i, &t);
+                const auto& car = traffic[(i + 1) % wreckSteps.size()];
+                if (body.width > 0)
+                    DrawCrashCar(body, car.color, wreckSteps[i].width, std::min(1.0f, t * 5), -18 * std::sin(PI * t));
+            });
+        }
+        stand("crash-blast", [this](Rectangle) { DrawCrashBlast(BlastAt(CrashImpact(), pileupSeconds)); });
+
+        // Every wooden crossarm and cloud uses its actual collision rectangle.
+        for (const auto& object : Objects().Objects()) {
+            if (object->Id().rfind("utility-pole-", 0) == 0)
+                stand(object->Id(), [](Rectangle ledge) { DrawUtilityPole(ledge); });
+            if (object->Id().rfind("sky-cloud-", 0) == 0) stand(object->Id(), [](Rectangle p) { DrawCloud(p); });
+        }
+        // The grounded masts, then the insulators and live cables.
+        for (std::size_t i = 0; i <= wires.size(); ++i)
+            stand(NumberedId("wire-mast-", i), [i](Rectangle) { DrawWireMast(i); });
+        // All three cable states use the same bounds and timing as collision.
+        for (std::size_t i = 0; i < cableIds.size(); ++i) {
+            stand(cableIds[i], [this, i](Rectangle) {
+                const float elapsed = ElapsedSeconds();
+                const int w = static_cast<int>(i);
+                DrawElectricWire(wires[i], WireWarning(w, elapsed), WireLive(w, elapsed), elapsed);
+            });
+        }
+        stand("checkpoint-flag", [this](Rectangle) {
+            const Vector2 flag{firstCloud.x + 6, firstCloud.y - 27};
+            DrawLineEx(flag, {flag.x, firstCloud.y}, 3, DARKBLUE);
+            DrawTriangle(flag, {flag.x, flag.y + 13}, {flag.x + 20, flag.y + 6},
+                         checkpoint.x >= firstCloud.x ? LIME : GOLD);
+        });
+        for (std::size_t k = 0; k < gasSlots; ++k) {
+            stand(NumberedId("gas-", k), [this, k](Rectangle) {
+                if (k < gasPuffs.size()) DrawGasPuff(gasPuffs[k].center, gasPuffs[k].age);
+            });
+        }
+        for (std::size_t k = 0; k < pigSlots; ++k) {
+            stand(NumberedId("pig-", k), [this, k](Rectangle) {
+                if (k < pigs.size()) DrawFlyingPig(pigs[k].bounds, ElapsedSeconds());
+            });
+            Objects().Get(NumberedId("pig-", k))->SetFacing(Facing::Left);
+        }
+        for (std::size_t k = 0; k < starCount; ++k) {
+            stand(NumberedId("star-warning-", k), [this, k](Rectangle) {
+                const float halfView = worldViewport.height / (2 * Camera().zoom);
+                DrawCloudStarWarning(stars[k].x, Camera().target.y - halfView + 16, Camera().target.y + halfView,
+                                     stars[k].warningSeconds);
+            });
+            stand(NumberedId("falling-star-", k), [this, k](Rectangle) {
+                const auto& star = stars[k];
+                DrawLineEx({star.x - 10.0f, star.y - 65.0f}, {star.x, star.y}, 9.0f, {243, 184, 117, 255});
+                DrawCircle(static_cast<int>(star.x), static_cast<int>(star.y), 17.0f, {255, 225, 149, 255});
+            });
+        }
+        // Rainbow slide drops the player onto the campus sidewalk.
+        stand("rainbow-slide", [](Rectangle) {
+            for (int i = 0; i < 6; ++i) {
+                const float shift = static_cast<float>(i - 2) * 7.0f;
+                for (int step = 0; step < 60; ++step) {
+                    auto a = SlidePoint(static_cast<float>(step) / 60);
+                    auto b = SlidePoint(static_cast<float>(step + 1) / 60);
+                    a.x += 15 + shift; b.x += 15 + shift;
+                    a.y += 44; b.y += 44;
+                    DrawLineEx(a, b, 8, rainbowColors[i]);
+                }
+            }
+        });
+        stand("rainbow-gate", [](Rectangle) {
+            DrawRectangleRec({rainbowGate.x - 2, rainbowGate.y - 2, 12, rainbowGate.height + 4}, gateTrim);
+            for (int stripe = 0; stripe * 12 < rainbowGate.height; ++stripe) {
+                const float offset = stripe * 12.0f;
+                DrawRectangleRec({rainbowGate.x, rainbowGate.y + offset, 8, std::min(12.0f, rainbowGate.height - offset)},
+                                 rainbowColors[stripe % 6]);
+            }
+        });
+        stand("sign-rainbow", [](Rectangle) {
+            DrawRectangleRounded({rainbowGate.x + 6, rainbowEntrance.y - 38, 132, 24}, 0.2f, 4, gateTrim);
+        });
+        stand("campus-path", [](Rectangle) {
+            DrawRectangleRec({6880, floorY, 325, 120}, {116, 130, 140, 255});
+            DrawRectangleRec({6880, floorY, 325, 8}, {202, 212, 216, 255});
+        });
+        stand("lecture-hall", [](Rectangle) {
+            DrawRectangleRec({6995, 1300, 210, 180}, {157, 139, 127, 255});
+            DrawTriangle({6975, 1300}, {7100, 1245}, {7225, 1300}, {83, 79, 103, 255});
+            DrawRectangleRec({6995, 1300, 210, 12}, {221, 204, 181, 255});
+            for (int x : {7012, 7161}) {
+                DrawRectangleRec({static_cast<float>(x), 1335, 30, 50}, {69, 113, 143, 255});
+                DrawRectangleRec({static_cast<float>(x + 13), 1335, 3, 50}, {210, 218, 224, 255});
+            }
+            for (int x : {7045, 7145}) DrawRectangleRec({static_cast<float>(x), 1320, 9, 160}, {224, 211, 188, 255});
+            DrawRectangleRec({7080, 1375, 75, 105}, {38, 55, 74, 255});
+            DrawRectangleLinesEx({7080, 1375, 75, 105}, 3, {223, 210, 186, 255});
+            DrawCircle(7142, 1430, 3, GOLD);
+        });
+        stand("anvil", [this](Rectangle) { DrawAnvil(Objects().Get(anvilId)->Bounds()); });
+        stand("anvil-poof", [this](Rectangle) {
+            DrawAnvilPoof(Objects().Get(anvilId)->Bounds(), ElapsedSeconds() - anvilLandedAt);
+        });
+    }
+
+    void Level1::DrawWorldFront(const Resources&) const {
+        // Words are drawn after every object, so they stay readable on top of sprites.
+        DrawText("SCHOOL >", 500, 1353, 12, RAYWHITE);
+        DrawText("< WRONG WAY", 646, 1359, 12, RAYWHITE);
+        DrawText("< UNDERPASS", static_cast<int>(roadStart - 110), static_cast<int>(floorY + 29), 11, RAYWHITE);
+        DrawText("TRAFFIC TUNNEL", static_cast<int>(tunnelEntranceX + 53), static_cast<int>(floorY - 135 + 31), 12, RAYWHITE);
+        DrawText("CHECKPOINT", 3703, 810, 14, RAYWHITE);
+        DrawText("HOLD S: DUCK", 4750, 652, 13, RAYWHITE);
+        if (!pileupSettled && pileupStarted && !crashImpact) {
+            const Color amber{255, 199, 69, 255};
+            DrawText("CHICKEN CROSSING", static_cast<int>(chickenX) - 53, 1411, 13, amber);
+            const auto& lead = traffic[1].bounds;
+            if (pileupSeconds >= 0 && lead.x - chickenX < 190)
+                DrawText("BRAKE!", static_cast<int>(lead.x + 34), static_cast<int>(lead.y - 20), 16, GOLD);
+        }
+        if (crashImpact && pileupSeconds < blastDuration) {
+            const Blast blast = BlastAt(CrashImpact(), pileupSeconds);
+            DrawText("CRASH!", static_cast<int>(blast.center.x - 49), static_cast<int>(blast.center.y - 14),
+                     28, Fade({100, 53, 55, 255}, blast.opacity));
+        }
         if (pileupStarted && !crashImpact && GetPlayer().Position().x > 2620.0f)
             DrawText("CHICKEN CROSSING - WAIT FOR THE CRASH", 2648, 1320, 12, GOLD);
         if (pileupSettled) DrawText("CLIMB UP!", 2710, 1338, 17, RAYWHITE);
-
-        // Every wooden crossarm uses its actual collision rectangle.
-        for (const auto& object : Definition().objects) {
-            if (object.id.rfind("telephone-step-", 0) != 0 && object.id != "sky-checkpoint-ledge") continue;
-            DrawUtilityPole({object.position.x, object.position.y, object.size.x, object.size.y});
-        }
-
-        // Draw the grounded masts first, then the insulators and live cables.
-        DrawWireSupports();
-
-        // All three cable states use the same bounds and timing as collision.
-        for (std::size_t i = 0; i < wires.size(); ++i) {
-            const float elapsed = ElapsedSeconds();
-            DrawElectricWire(wires[i], WireWarning(static_cast<int>(i), elapsed),
-                             WireLive(static_cast<int>(i), elapsed), elapsed);
-        }
-
-        // Cloud refuges above the wires allow the player to wait out electricity.
-        for (const auto& refuge : refuges) DrawCloud(refuge);
-        for (const auto& object : Definition().objects) {
-            if (object.id.rfind("cloud-", 0) != 0 && object.id != "rainbow-entrance") continue;
-            DrawCloud({object.position.x, object.position.y, object.size.x, object.size.y});
-            if (object.id == "cloud-1") {
-                const Vector2 flag{object.position.x + 6, object.position.y - 27};
-                DrawLineEx(flag, {flag.x, object.position.y}, 3, DARKBLUE);
-                DrawTriangle(flag, {flag.x, flag.y + 13}, {flag.x + 20, flag.y + 6},
-                             checkpoint.x >= object.position.x ? LIME : GOLD);
-            }
-        }
         const Rectangle player = GetPlayer().Bounds();
         bool pigApproaching = false;
-        for (const auto& puff : gasPuffs) DrawGasPuff(puff.center, puff.age);
         for (const auto& flyer : pigs) {
-            const Rectangle pig = flyer.bounds;
-            rlPushMatrix();
-            rlTranslatef(pig.x, pig.y, 0);
-            rlScalef(pigScale, pigScale, 1);
-            const float flap = std::sin(ElapsedSeconds() * 17.0f) * 5.0f;
-            DrawEllipse(49, 21, 34, 16, {237, 154, 174, 255});
-            DrawCircle(20, 18, 15, {244, 170, 188, 255});
-            DrawEllipse(7, 23, 8, 5, {212, 115, 144, 255});
-            DrawCircle(17, 15, 2, BLACK);
-            DrawTriangle({13, 8}, {25, 8}, {12, 0}, PINK);
-            DrawEllipse(47, static_cast<int>(9 + flap), 19, 9, RAYWHITE);
-            DrawLine(81, 19, 92, 11, PINK);
-            rlPopMatrix();
-            const float distance = pig.x - (player.x + player.width);
-            if (distance > 0 && distance < 220 && std::abs(pig.y - player.y) < 55)
-                pigApproaching = true;
+            const float distance = flyer.bounds.x - (player.x + player.width);
+            if (distance > 0 && distance < 220 && std::abs(flyer.bounds.y - player.y) < 55) pigApproaching = true;
         }
         if (!GetPlayer().Crouching() && pigApproaching) {
             const auto p = GetPlayer().Position();
             DrawText("HOLD S!", static_cast<int>(p.x - 12), static_cast<int>(p.y - 50), 14, GOLD);
         }
-        for (const auto& star : stars) {
-            if (star.warned && !star.falling && !star.finished && InCloudSection(star.x) && InCloudSection(player.x)) {
-                const float halfView = worldViewport.height / (2 * Camera().zoom);
-                DrawCloudStarWarning(star.x, Camera().target.y - halfView + 16, Camera().target.y + halfView,
-                                     star.warningSeconds);
-            }
-            if (star.falling) {
-                DrawLineEx({star.x - 10.0f, star.y - 65.0f}, {star.x, star.y}, 9.0f,
-                           {243, 184, 117, 255});
-                DrawCircle(static_cast<int>(star.x), static_cast<int>(star.y), 17.0f,
-                           {255, 225, 149, 255});
-            }
-        }
-        // Rainbow slide drops the player onto the campus sidewalk.
-        const Color rainbow[] = {
-            {247, 110, 117, 255}, {249, 164, 99, 255}, {252, 216, 111, 255},
-            {136, 216, 146, 255}, {122, 190, 247, 255}, {176, 151, 222, 255}
-        };
-        for (int i = 0; i < 6; ++i) {
-            const float shift = static_cast<float>(i - 2) * 7.0f;
-            for (int step = 0; step < 60; ++step) {
-                auto a = SlidePoint(static_cast<float>(step) / 60);
-                auto b = SlidePoint(static_cast<float>(step + 1) / 60);
-                a.x += 15 + shift; b.x += 15 + shift;
-                a.y += 44; b.y += 44;
-                DrawLineEx(a, b, 8, rainbow[i]);
-            }
-        }
-        const Color gateTrim{43, 53, 78, 255};
-        DrawRectangleRec({rainbowGate.x - 2, rainbowGate.y - 2, 12, rainbowGate.height + 4}, gateTrim);
-        for (int stripe = 0; stripe * 12 < rainbowGate.height; ++stripe) {
-            const float offset = stripe * 12.0f;
-            DrawRectangleRec({rainbowGate.x, rainbowGate.y + offset, 8, std::min(12.0f, rainbowGate.height - offset)},
-                             rainbow[stripe % 6]);
-        }
-        DrawRectangleRounded({rainbowGate.x + 6, rainbowEntrance.y - 38, 132, 24}, 0.2f, 4, gateTrim);
-        DrawText("RAINBOW SLIDE >", static_cast<int>(rainbowGate.x + 13),
-                 static_cast<int>(rainbowEntrance.y - 32), 14, RAYWHITE);
-        DrawRectangleRec({6880, floorY, 325, 120}, {116, 130, 140, 255});
-        DrawRectangleRec({6880, floorY, 325, 8}, {202, 212, 216, 255});
-        DrawRectangleRec({6995, 1300, 210, 180}, {157, 139, 127, 255});
-        DrawTriangle({6975, 1300}, {7100, 1245}, {7225, 1300}, {83, 79, 103, 255});
-        DrawRectangleRec({6995, 1300, 210, 12}, {221, 204, 181, 255});
-        for (int x : {7012, 7161}) {
-            DrawRectangleRec({static_cast<float>(x), 1335, 30, 50}, {69, 113, 143, 255});
-            DrawRectangleRec({static_cast<float>(x + 13), 1335, 3, 50}, {210, 218, 224, 255});
-        }
-        for (int x : {7045, 7145}) DrawRectangleRec({static_cast<float>(x), 1320, 9, 160}, {224, 211, 188, 255});
-        DrawRectangleRec({7080, 1375, 75, 105}, {38, 55, 74, 255});
-        DrawRectangleLinesEx({7080, 1375, 75, 105}, 3, {223, 210, 186, 255});
-        DrawCircle(7142, 1430, 3, GOLD);
+        DrawText("RAINBOW SLIDE >", static_cast<int>(rainbowGate.x + 13), static_cast<int>(rainbowEntrance.y - 32), 14, RAYWHITE);
         DrawText("LECTURE HALL", 7019, 1308, 18, {44, 48, 66, 255});
-        const auto* anvil = Objects().Get(anvilId);
-        if (anvil->IsActive()) DrawAnvil(anvil->Bounds());
-        else if (anvil->IsTriggered()) DrawAnvilPoof(anvil->Bounds(), ElapsedSeconds() - anvilLandedAt);
         if (campusReached) DrawText("YOU MADE IT!", 6915, 1420, 15, {160, 237, 179, 255});
     }
 

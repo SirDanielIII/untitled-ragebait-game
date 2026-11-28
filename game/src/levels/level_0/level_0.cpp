@@ -22,12 +22,15 @@ namespace rage {
             .backdrop = ArtId::Level0,
             .world = {0, 0, 1500, 700},
             .spawn = {100, 606},
+            // {x, y, width, height}: x/y is the top-left. Shortcuts are in objects/game_object.h.
             .objects = {
-                {.id = "floor", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {0, 650}, .size = {1500, 50}, .assetId = "platform"},
-                {.id = "step-1", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {350, 550}, .size = {180, 24}, .assetId = "platform"},
-                {.id = "step-2", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {630, 470}, .size = {180, 24}, .assetId = "platform"},
-                {.id = "step-3", .type = ObjectType::Static, .collision = CollisionType::Solid, .position = {920, 550}, .size = {180, 24}, .assetId = "platform"},
+                SolidPlatform("floor", {0, 650, 1500, 50}),
+                SolidPlatform("step-1", {350, 550, 180, 24}),
+                SolidPlatform("step-2", {630, 470, 180, 24}),
+                SolidPlatform("step-3", {920, 550, 180, 24}),
             },
+            // Asset IDs for the objects above: level_0_sprites.cpp.
+            .sprites = Level0Sprites(),
         };
         return definition;
     }

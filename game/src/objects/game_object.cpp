@@ -23,17 +23,32 @@ namespace rage {
 
     void GameObject::SubmitSprites(RenderQueue &queue, const AssetManager &assets,
                                    const PlaceholderDrawer &placeholder) const {
-        if (!active || !visible || definition.assetId.empty()) {
-            return; // Inactive, hidden, or intentionally invisible.
+        if (!active || !visible) {
+            return; // Inactive or hidden.
         }
         // Animation by state, falling back to the asset's first row
         // (Find with an empty state). A missing row is not an error:
-        // the placeholder below is drawn instead, at the same bounds.
-        const AnimationData *animation = assets.Find(definition.assetId, animator.State());
-        if (!animation) {
-            animation = assets.Find(definition.assetId, "");
+        // the stand-in or placeholder below is drawn instead, at the same bounds.
+        const AnimationData *animation = nullptr;
+        if (!definition.assetId.empty()) {
+            animation = assets.Find(definition.assetId, animator.State());
+            if (!animation) {
+                animation = assets.Find(definition.assetId, "");
+            }
+        }
+        if (!animation && standIn) {
+            // The level's own drawing, until the art is in Game Data.
+            const Rectangle bounds = Bounds();
+            queue.Submit(Layer::Middle, [draw = standIn, bounds] { draw(bounds); });
+            return;
         }
         if (!animation) {
+            if (definition.assetId.empty()) {
+                return; // Intentionally invisible: collision or a trigger only.
+            }
+            if (!definition.drawPlaceholder) {
+                return; // The level draws its own stand-in until the art exists.
+            }
             const Rectangle bounds = Bounds();
             queue.Submit(Layer::Middle, [bounds, placeholder] {
                 if (placeholder) {
@@ -54,7 +69,7 @@ namespace rage {
         } else if (animation->pivot == Pivot::Centre) {
             pivot = {bounds.x + bounds.width / 2, bounds.y + bounds.height / 2};
         }
-        queue.Submit(assets, *animation, animator.Frame(*animation), pivot, Facing::None, placeholder);
+        queue.Submit(assets, *animation, animator.Frame(*animation), pivot, facing, placeholder);
     }
 
     void GameObject::Reset() {

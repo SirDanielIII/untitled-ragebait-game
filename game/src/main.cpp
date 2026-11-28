@@ -53,6 +53,8 @@ namespace rage {
         for (const auto &entry: registrations) {
             if (entry.definition().id != id) continue;
             auto activeLevel = entry.create();
+            for (const auto &thing : activeLevel->UnmatchedSprites())
+                TraceLog(LOG_WARNING, "Sprites: %s has no object named \"%s\"", activeLevel->Definition().title, thing.c_str());
             activeLevel->Reset(config); // Virtual hooks run after full construction.
             return activeLevel;
         }
