@@ -254,8 +254,17 @@ int main(int argc, char **argv) {
         if (configPath.empty()) configPath = resources / "config.yaml";
         if (settingsPath.empty()) settingsPath = rage::ConfigStore::DefaultSettingsPath();
         rage::ConfigStore config;
-        config.Load(configPath);
-        if (!smoke) config.Load(settingsPath, true, true);
+        config.LoadFile(configPath, rage::ConfigFile::Tuning);
+        config.LoadFile(resources / "settings.yaml", rage::ConfigFile::Settings);
+        config.LoadFile(resources / "game.yaml", rage::ConfigFile::SaveData);
+        if (!smoke) {
+            config.LoadFile(settingsPath, rage::ConfigFile::Settings, true);
+            const auto gamePath = settingsPath.parent_path() / "game.yaml";
+            // Migrate the old session section once, before preferences are rewritten.
+            if (!std::filesystem::exists(gamePath))
+                config.LoadFile(settingsPath, rage::ConfigFile::SaveData, true);
+            else config.LoadFile(gamePath, rage::ConfigFile::SaveData, true);
+        }
 #if defined(PLATFORM_WEB)
         // Desktop remains the verified build; browser persistence needs an IDBFS mount.
         if (smoke) {

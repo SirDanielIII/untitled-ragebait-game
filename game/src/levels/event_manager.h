@@ -13,6 +13,7 @@ namespace rage {
         std::string topic;
         std::uint64_t sourceId = 0; // Optional identifier for a particular object or message.
         DialogueRevealMethod revealMethod = DialogueRevealMethod::None;
+        std::string objectId; // Readable collision source, also available after removal.
     };
 
     struct Event {

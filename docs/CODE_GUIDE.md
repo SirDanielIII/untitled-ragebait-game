@@ -20,7 +20,7 @@ The current game supports menus, settings, level selection, movement/collision, 
 | Change dialogue reveal or panel drawing | `game/src/ui/dialogue/dialogue.cpp` |
 | Change colors or text layout | `game/src/ui/theme.h`, `game/src/ui/text/text.cpp` |
 | Change input bindings | `game/src/engine/input/input.h` |
-| Change default settings | `game/resources/config.yaml` |
+| Change player preferences / gameplay tuning / save defaults | `game/resources/settings.yaml` / `config.yaml` / `game.yaml` |
 | Add settings keys or validation | `game/src/engine/config/config.cpp` |
 | Choose fonts and fixed artwork slots | `game/src/engine/resources/asset_paths.h` |
 | Add sprites/animations (no code) | Game Data sheet, exported to `game/resources/data/game_data.csv` ([ART_ASSETS.md](ART_ASSETS.md#game-data-sprites-and-animations)) |
@@ -126,9 +126,9 @@ Mouse movement or clicks can change focus. A stationary pointer does not overrid
 
 ## Movement and dialogue
 
-The player uses seconds, small collision substeps and axis-separated rectangle collisions. Ground support is checked before jump input, including immediately after spawn/reset. World bounds and authored platform rectangles define collision geometry.
+The player uses seconds and substeps of at most 1/120 second. Objects and the player share those steps. `engine/collision/collision_system.*` resolves swept AABBs, including relative object movement, platform carrying, overlap recovery and crush reporting. Ground support is checked before jump input, including immediately after spawn/reset. Level boundaries are explicit colliders; the bottom is a kill zone rather than a clamp. See the collision authoring notes in [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md).
 
-Tune movement in the `player` section of `game/resources/config.yaml`, then rebuild/restart (or supply a tuning file with `--config`). It includes acceleration, counter-strafe acceleration, starting speed, coasting friction, speed, jump impulse, gravity, climbing, body dimensions, crouch multipliers and all stamina values. `GameConfig` supplies matching defaults when a key is missing.
+Tune movement in the `player` section of `game/resources/config.yaml`, then rebuild/restart (or supply a tuning file with `--config`). It includes acceleration, counter-strafe acceleration, starting speed, coasting friction, speed, jump impulse, gravity, climbing, body dimensions, crouch multipliers and all stamina values. `GameConfig` supplies fallback defaults when a key is missing; packaged tuning can override them.
 
 Hold Space (or W/Up) to jump whenever grounded and enough stamina is available. Climbing is exclusive to Level 2, where W/Up prioritizes climbing beside a wall; the other levels retain W/Up as jump controls. S/Down crouches on the ground to half standing height with feet fixed and moves at 20% speed. Airborne duck input is ignored; jumping or leaving a ledge restores standing height as soon as there is headroom. Low ceilings still prevent expanding the collider through geometry. A jump from crouch, including releasing crouch and jumping together, multiplies takeoff speed by 1.2 and pays the larger crouch jump cost. Successful crouch jumps emit a brief burst of square air particles at the takeoff point, managed by `player/jump_particles.*` and the shared level lifecycle. Add `crouch` and optionally `crouch_walk` player animation states for dedicated art; until then the standing artwork is compressed to the crouch height.
 
@@ -140,15 +140,17 @@ Each `DialogueCue` specifies text, speaker, speed multiplier, delay, size and sk
 
 ## Preferences
 
-Load order is `GameConfig` defaults, packaged `config.yaml` (or `--config`), then user settings (or `--settings`). The reader accepts section maps with two-space-indented numeric/bool scalars, comments and a UTF-8 BOM. Invalid keys or values are reported and leave the previous value intact.
+The three YAML files have distinct purposes:
 
-User preference loading/saving excludes the `player` section, including gameplay values in older `settings.yaml` files. Gameplay tuning therefore comes from the packaged config or `--config`, without stale preferences overriding it. `ConfigStore::Load`/`Save` can still read/write complete tuning files when `preferencesOnly` is false (the default).
+- `resources/config.yaml`: developer tuning under `player`, plus `debug.show_hitboxes`. The debug overlay labels active object IDs and colors solid, one-way, hazard, trigger and decorative bounds. Player offsets are `collision_offset_x/y`; `standing_width/height` define the body independently of animation frames.
+- `resources/settings.yaml`: packaged player preferences (`window`, `audio`, `dialogue`). Runtime edits save to `settings.yaml` beside the executable, or the path supplied by `--settings`.
+- `resources/game.yaml`: initial save data (`session.last_level` for now). Runtime save data lives in `game.yaml` beside the runtime settings file. An older settings file's session section is migrated when no game save exists.
 
-`--self-test` returns before configuration or window creation. `--smoke-test` loads the packaged config (or `--config`) but skips loading and saving user settings, including a supplied `--settings` file.
+Load order is C++ defaults, packaged tuning (or `--config`), packaged settings/save defaults, then runtime settings/save data. `ConfigStore::LoadFile`/`SaveFile` select the file's scope so settings cannot mask tuning or contain save data. The legacy `Load`/`Save` API remains available for combined files in tests/tools.
 
-The FPS cap ranges from 30 to 360. `window.unlimited_fps` bypasses the saved cap using `SetTargetFPS(0)`. Volume, mute, text speed and FPS visibility apply immediately. Writes wait until mouse release; pending changes also save on exit.
+The reader accepts section maps with two-space-indented numeric/bool scalars, comments and a UTF-8 BOM. Unknown keys, duplicate keys and invalid scalar types retain the preceding valid value and produce diagnostics. Finite numeric tuning is accepted without range restrictions. Audio volumes alone must lie in [0, 1]. Existing menu sliders provide convenient ranges; the YAML reader does not impose those ranges.
 
-Desktop builds read and save `settings.yaml` beside the game executable. The file stores preferences and the last selected stage. To carry settings into another build, move this file beside that build's executable. The game opens the main menu on startup.
+`--self-test` returns before configuration or window creation. `--smoke-test` loads packaged files (and `--config` when supplied) while skipping runtime preferences/save data and all persistence. Writes during ordinary gameplay wait until mouse release, with pending changes saved on exit. The game opens the main menu on startup.
 
 ## Build and tests
 

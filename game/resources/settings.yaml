@@ -1,0 +1,14 @@
+# Player-editable preferences. Volumes range from 0 to 1.
+window:
+  width: 1600
+  height: 900
+  target_fps: 60
+  unlimited_fps: false
+  show_fps: false
+audio:
+  master_volume: 1.0
+  muted: false
+  music_volume: 1.0
+  sfx_volume: 1.0
+dialogue:
+  characters_per_second: 40

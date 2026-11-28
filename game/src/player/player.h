@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/config/config.h"
+#include "engine/collision/collision_system.h"
 #include "engine/input/input.h"
 #include "raylib.h"
 #include <optional>
@@ -20,8 +21,17 @@ namespace rage {
                     std::span<const Rectangle> platforms, Rectangle world,
                     std::span<const Rectangle> oneWayPlatforms = {});
 
-        Rectangle Bounds() const { return {position.x, position.y, standingSize.x, bodyHeight}; }
+        void Update(float dt, const InputFrame &input, const GameConfig &config, CollisionSystem &collisions);
+        const CollisionResult &LastCollision() const { return lastCollision; }
+        const std::string &LastDamageSource() const { return lastDamageSource; }
+        void RecordDamageSource(std::string id) { lastDamageSource = std::move(id); }
+
+        Rectangle Bounds() const { return {position.x + collisionOffset.x, position.y + collisionOffset.y, standingSize.x, bodyHeight}; }
         Rectangle StandingBounds() const {
+            return {position.x + collisionOffset.x, position.y + collisionOffset.y + bodyHeight - standingSize.y, standingSize.x, standingSize.y};
+        }
+        Rectangle VisualBounds() const { return {position.x, position.y, standingSize.x, bodyHeight}; }
+        Rectangle VisualStandingBounds() const {
             return {position.x, position.y + bodyHeight - standingSize.y, standingSize.x, standingSize.y};
         }
         Vector2 Position() const { return position; }
@@ -42,6 +52,9 @@ namespace rage {
         PlayerState State() const;
 
     private:
+        Vector2 collisionOffset{};
+        CollisionResult lastCollision;
+        std::string lastDamageSource;
         Vector2 position = {};
         Vector2 velocity = {};
         bool grounded = false;

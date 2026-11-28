@@ -66,6 +66,9 @@ namespace rage {
         // collision geometry comes from these, not from artwork.
         // (Previously a list of platform rectangles; see objects/.)
         std::vector<GameObjectDefinition> objects;
+        bool sideBoundaries = true;
+        bool ceilingBoundary = true;
+        bool bottomKillZone = true;
     };
 
     class Level {
@@ -104,6 +107,11 @@ namespace rage {
 
     protected:
         void Restart();
+        // Scripted animation supplies geometry/identity; detection and entry tracking
+        // still use the shared system. Call each frame while the shape exists.
+        bool ScriptContact(const std::string &id, Rectangle bounds, CollisionType type = CollisionType::Hazard,
+                           bool enabled = true);
+
         EventManager &Events() { return events; }
         Player &MutablePlayer() { return player; }
         // Event-facing object actions. These are the consistent
@@ -154,7 +162,8 @@ namespace rage {
 
     private:
         void UpdateCamera();
-        void CheckHazardsAndTriggers();
+        bool CheckHazardsAndTriggers();
+        void RefreshColliders();
         void NotifyObject(const GameObject &object, const char *topic);
 
         bool ApplyDialogueSpeed();
@@ -183,6 +192,13 @@ namespace rage {
         Facing playerFacing = Facing::Right;
         EventManager events;
         ObjectManager objects;
+        CollisionSystem collisions;
+        CollisionSystem scriptCollisions;
+        std::unordered_map<std::string, Collider> scriptBounds;
+        std::vector<Collider> scriptShapes;
+        std::vector<CollisionContact> scriptContacts;
+        std::vector<CollisionContact> previousScriptContacts;
+        Rectangle scriptPlayerFrom{};
         Vector2 respawnPoint{};
         bool levelComplete = false;
         std::vector<std::string> soundRequests;

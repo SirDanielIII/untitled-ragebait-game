@@ -20,7 +20,7 @@ Number levels consistently across folders, files, IDs, classes, definitions and 
 - A playable level gets its own numbered folder. Keep its layout, update hooks and factory in `level_<number>.cpp`. For levels with scripted events, declare the class and its state in `level_<number>.h` and define its event list in `level_<number>_events.cpp`. Shared behavior belongs in `levels/level.*`.
 - Put source/header pairs together in a feature folder: `player/player.*`, `ui/dialogue/dialogue.*`, `engine/window/game_window.*`.
 - Keep menu layouts in `ui/menus/`; shared menu controls, sliders, dialogue and text each have their own folder under `ui/`. `ui/theme.h` contains shared colors.
-- `player/` owns movement/collision. `engine/` groups `window/`, `config/`, `input/`, `resources/` and `graphics/` support.
+- `player/` owns movement; `engine/collision/` owns shared collision detection, resolution and contacts. `engine/` groups `window/`, `config/`, `input/`, `resources/` and `graphics/` support.
 - Include paths start at `game/src`, for example `#include "ui/dialogue/dialogue.h"`.
 - `src/CMakeLists.txt` recursively discovers `.cpp`, `.h` and `.hpp` files. Add or remove files and build normally; no manual source list is needed. Keep scratch programs out of feature folders.
 - Tests live in `game/tests/`; their `.cpp` files are also discovered recursively and provide the existing `--self-test` / `--smoke-test` commands.

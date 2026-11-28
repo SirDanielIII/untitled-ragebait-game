@@ -1,5 +1,6 @@
 #include "objects/moving_object.h"
 #include <algorithm>
+#include <cmath>
 
 namespace rage {
     MovingObject::MovingObject(GameObjectDefinition definition) : GameObject(definition) {
@@ -9,29 +10,18 @@ namespace rage {
         if (!active) {
             return;
         }
-        position.x += velocity.x * dt;
-        position.y += velocity.y * dt;
+        if (!std::isfinite(dt) || dt <= 0) return;
+        const auto advance = [dt](float &value, float &speed, float start, float range) {
+            if (range <= 0) { value += speed * dt; return; }
+            const float offset = value - start;
+            const float phase = speed >= 0 ? offset : 2 * range - offset;
+            const float next = std::fmod(phase + std::abs(speed) * dt, 2 * range);
+            value = start + (next < range ? next : 2 * range - next);
+            speed = std::copysign(std::abs(speed), next < range ? 1.0f : -1.0f);
+        };
+        advance(position.x, velocity.x, initialPosition.x, definition.range.x);
+        advance(position.y, velocity.y, initialPosition.y, definition.range.y);
         animator.Update(dt);
-        // Reverse at each end of the range, and clamp so the object
-        // never drifts past it over many frames.
-        if (definition.range.x > 0) {
-            if (position.x > initialPosition.x + definition.range.x) {
-                position.x = initialPosition.x + definition.range.x;
-                velocity.x = -std::abs(velocity.x);
-            } else if (position.x < initialPosition.x) {
-                position.x = initialPosition.x;
-                velocity.x = std::abs(velocity.x);
-            }
-        }
-        if (definition.range.y > 0) {
-            if (position.y > initialPosition.y + definition.range.y) {
-                position.y = initialPosition.y + definition.range.y;
-                velocity.y = -std::abs(velocity.y);
-            } else if (position.y < initialPosition.y) {
-                position.y = initialPosition.y;
-                velocity.y = std::abs(velocity.y);
-            }
-        }
     }
 
     FallingObject::FallingObject(GameObjectDefinition definition) : GameObject(definition) {
@@ -61,6 +51,16 @@ namespace rage {
             actionCompleted = true;
             animator.SetState("land");
         }
+    }
+
+    void FallingObject::OnBlocked(const CollisionResult &result) {
+        if (!falling || !result.grounded) return;
+        velocity = {};
+        falling = false;
+        landed = true;
+        triggered = true;
+        actionCompleted = true;
+        animator.SetState("land");
     }
 
     void FallingObject::Reset() {

@@ -21,6 +21,7 @@ namespace rage {
         explicit FallingObject(GameObjectDefinition definition);
         void Update(float dt) override;
         void StartFall();
+        void OnBlocked(const CollisionResult &result) override;
         bool HasLanded() const { return landed; }
         void Reset() override;
 

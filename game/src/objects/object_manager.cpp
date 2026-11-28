@@ -4,7 +4,7 @@
 
 namespace rage {
     GameObject *ObjectManager::Create(const GameObjectDefinition &definition) {
-        if (Get(definition.id) != nullptr) {
+        if (definition.id.empty() || Get(definition.id) != nullptr) {
             return nullptr;  // Duplicate id — ids must be unique per level.
         }
         std::unique_ptr<GameObject> object;
@@ -100,11 +100,36 @@ namespace rage {
         return object != nullptr && object->IsTriggered();
     }
 
+    std::vector<Collider> ObjectManager::Colliders() const {
+        std::vector<Collider> result;
+        for (const auto &object : objects) {
+            if (!object->IsActive()) continue;
+            const auto old = previousBounds.find(object->Id());
+            result.push_back({object->Id(), object->CollisionBounds(),
+                old == previousBounds.end() ? object->CollisionBounds() : old->second,
+                object->Collision(), object->Filter()});
+        }
+        return result;
+    }
+
     void ObjectManager::UpdateAll(float dt) {
+        previousBounds.clear();
         for (auto &object : objects) {
-            if (object->IsActive()) {
-                object->Update(dt);
-            }
+            previousBounds[object->Id()] = object->CollisionBounds();
+            if (object->IsActive()) object->Update(dt);
+        }
+        if (dt <= 0) return;
+        CollisionSystem collisions;
+        for (auto &object : objects) {
+            if (!object->IsActive() || !object->CollidesWithEnvironment()) continue;
+            collisions.SetColliders(Colliders());
+            Rectangle body = previousBounds[object->Id()];
+            const auto target = object->CollisionBounds();
+            Vector2 velocity{(target.x - body.x) / dt, (target.y - body.y) / dt};
+            const auto result = collisions.Move(body, velocity, dt, object->Filter(), object->Id());
+            const auto position = object->Position();
+            object->SetPosition({position.x + body.x - target.x, position.y + body.y - target.y});
+            object->OnBlocked(result);
         }
     }
 
@@ -116,6 +141,7 @@ namespace rage {
     }
 
     void ObjectManager::ResetAll() {
+        previousBounds.clear();
         for (auto &object : objects) {
             object->Reset();
         }
@@ -123,6 +149,7 @@ namespace rage {
 
     void ObjectManager::Clear() {
         objects.clear();
+        previousBounds.clear();
     }
 
     std::vector<Rectangle> ObjectManager::SolidBounds(CollisionType collision) const {
@@ -141,7 +168,7 @@ namespace rage {
             if (!object->IsActive() || object->Collision() != collision) {
                 continue;
             }
-            if (CheckCollisionRecs(bounds, object->CollisionBounds())) {
+            if (CollisionSystem::Overlaps(bounds, object->CollisionBounds())) {
                 found.push_back(object.get());
             }
         }

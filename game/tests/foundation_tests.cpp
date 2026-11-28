@@ -14,6 +14,7 @@ void TestAssetRendering();
 void TestAudioData();
 void TestAudioPlayback();
 void TestObjects();
+void TestCollisions();
 void TestBirds();
 void TestBirdRendering();
 void TestPlayerMovement();
@@ -394,6 +395,7 @@ int RunSelfTests()
     run("Game Data", TestGameData);
     run("audio data", TestAudioData);
     run("objects", TestObjects);
+    run("collisions", TestCollisions);
     run("birds", TestBirds);
     if (failures == 0) {
         std::cout << "All foundation self-tests passed (no window/audio context required).\n";

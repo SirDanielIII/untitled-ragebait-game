@@ -30,11 +30,18 @@ namespace rage {
 
     void Level::Restart() {
         events.Reset();
+        player.RecordDamageSource({});
         player.Reset(definition.spawn);
         jumpParticles.Clear();
         respawnPoint = definition.spawn;
         levelComplete = false;
         objects.ResetAll();
+        collisions.Reset();
+        scriptCollisions.Reset();
+        scriptBounds.clear();
+        scriptShapes.clear();
+        scriptContacts.clear();
+        previousScriptContacts.clear();
         playerAnimator = {};
         playerAnimator.SetState("idle");
         soundRequests.clear();
@@ -44,6 +51,7 @@ namespace rage {
         currentCue.id = 0;
         Say(definition.intro);
         OnReset();
+        RefreshColliders();
         UpdateCamera();
     }
 
@@ -71,23 +79,52 @@ namespace rage {
         dialogueDelay = std::max(0.0f, dialogueDelay - dt);
         dialogue.writer.Update(revealTime);
         PublishDialogueMilestones(revealMethod);
-        // Objects move first, so the player stands on their updated
-        // bounds this frame. Hazards and triggers are checked after
-        // the player moves, and before events.Update(), so the
-        // notifications they post are visible to events this update.
-        objects.UpdateAll(dt);
         InputFrame playerInput = input;
         playerInput.climb = input.climb && CanClimb();
-        player.Update(dt, playerInput, config, objects.SolidBounds(), definition.world,
-                      objects.SolidBounds(CollisionType::OneWay));
+        // Objects and actors advance on the same clock, including long frames.
+        scriptPlayerFrom = player.Bounds();
+        float remaining = dt;
+        do {
+            const float step = std::min(remaining, 1.0f / 120.0f);
+            objects.UpdateAll(step);
+            RefreshColliders();
+            player.Update(step, playerInput, config, collisions);
+            if (CheckHazardsAndTriggers()) break;
+            remaining -= step;
+        } while (remaining > 0);
         jumpParticles.Update(dt);
         if (const auto feet = player.TakeCrouchJump()) jumpParticles.Emit(*feet);
         UpdatePlayerAnimation(dt);
         UpdatePlayerSounds(dt);
-        CheckHazardsAndTriggers();
+        scriptShapes.clear();
+        scriptContacts.clear();
         OnUpdate(dt, input);
+        scriptBounds.clear();
+        for (const auto &shape : scriptShapes) scriptBounds[shape.id] = shape;
+        for (const auto &event : scriptCollisions.TrackContacts("player", scriptContacts)) {
+            const auto &c = event.contact;
+            events.Notify({event.phase == ContactPhase::Enter ? objectEvents::contactEntered : objectEvents::contactExited,
+                           ObjectNotificationId(c.objectId), DialogueRevealMethod::None, c.objectId});
+        }
+        previousScriptContacts = scriptContacts;
+        scriptCollisions.SetColliders(scriptShapes);
         events.Update();
         UpdateCamera();
+    }
+
+    bool Level::ScriptContact(const std::string &id, Rectangle bounds, CollisionType type, bool enabled) {
+        auto previous = bounds;
+        if (const auto old = scriptBounds.find(id); old != scriptBounds.end() && old->second.type != CollisionType::None)
+            previous = old->second.bounds;
+        scriptShapes.push_back({id, bounds, previous, enabled ? type : CollisionType::None});
+        if (!enabled || !CollisionSystem::TouchesDuringMove(scriptPlayerFrom, player.Bounds(), previous, bounds)) return false;
+        scriptContacts.push_back({id, type});
+        const bool entered = std::ranges::none_of(previousScriptContacts, [&](const auto &c) { return c.objectId == id; });
+        if (entered && type == CollisionType::Hazard) {
+            player.RecordDamageSource(id);
+            events.Notify({objectEvents::hazardHit, ObjectNotificationId(id), DialogueRevealMethod::None, id});
+        }
+        return entered;
     }
 
     bool Level::ActivateObject(const std::string &id) {
@@ -115,7 +152,7 @@ namespace rage {
     }
 
     void Level::NotifyObject(const GameObject &object, const char *topic) {
-        events.Notify({topic, ObjectNotificationId(object.Id())});
+        events.Notify({topic, ObjectNotificationId(object.Id()), DialogueRevealMethod::None, object.Id()});
     }
 
     void Level::OnTrigger(GameObject &object) {
@@ -127,43 +164,70 @@ namespace rage {
         }
     }
 
-    void Level::CheckHazardsAndTriggers() {
-        // Actions that finished this frame (e.g. an anvil landing)
-        // post once, then the flag is consumed.
+    void Level::RefreshColliders() {
+        auto scene = objects.Colliders();
+        const auto w = definition.world;
+        const auto add = [&](const char *id, Rectangle bounds, CollisionType type) {
+            scene.push_back({id, bounds, bounds, type});
+        };
+        if (definition.sideBoundaries) {
+            add("boundary-left", {w.x - 100, w.y - 100, 100, w.height + 1000}, CollisionType::Solid);
+            add("boundary-right", {w.x + w.width, w.y - 100, 100, w.height + 1000}, CollisionType::Solid);
+        }
+        if (definition.ceilingBoundary) add("boundary-top", {w.x, w.y - 100, w.width, 100}, CollisionType::Solid);
+        if (definition.bottomKillZone) add("world-fall", {w.x - 100, w.y + w.height + 100, w.width + 200, 1000}, CollisionType::Hazard);
+        collisions.SetColliders(std::move(scene));
+    }
+
+    bool Level::CheckHazardsAndTriggers() {
         for (const auto &object : objects.Objects()) {
-            if (object->TakeActionCompleted()) {
-                NotifyObject(*object, objectEvents::actionCompleted);
-            }
+            if (object->TakeActionCompleted()) NotifyObject(*object, objectEvents::actionCompleted);
         }
-        const Rectangle playerBounds = player.Bounds();
-        // A hazard respawns the player at the last checkpoint (or the
-        // spawn). Objects are not reset, so a reached checkpoint
-        // survives the death.
-        for (auto *hazard : objects.Overlapping(playerBounds, CollisionType::Hazard)) {
-            NotifyObject(*hazard, objectEvents::hazardHit);
-            hazard->OnTrigger();
-            RequestSound(playerSounds::death);
-            player.Reset(respawnPoint);
-            trackingPlayerSounds = false; // Appearing at the checkpoint is not a landing.
-            return;
-        }
-        // Triggers fire on entry only: the object's triggered flag is
-        // the "player is inside" state, cleared when they leave a
-        // repeatable trigger. One-shot triggers deactivate in
-        // OnTrigger, so they never fire twice.
-        for (auto &object : objects.Objects()) {
-            if (!object->IsActive() || object->Collision() != CollisionType::Trigger) {
+        const auto contactEvents = collisions.TrackContacts("player", player.LastCollision().contacts);
+        for (const auto &event : contactEvents) {
+            const auto &contact = event.contact;
+            const bool entered = event.phase == ContactPhase::Enter;
+            events.Notify({entered ? objectEvents::contactEntered : objectEvents::contactExited,
+                ObjectNotificationId(contact.objectId), DialogueRevealMethod::None, contact.objectId});
+            auto *object = objects.Get(contact.objectId);
+            if (!entered) {
+                if (object && object->IsActive()) object->ClearTrigger();
                 continue;
             }
-            const bool overlapping = CheckCollisionRecs(playerBounds, object->CollisionBounds());
-            if (overlapping && !object->IsTriggered()) {
+            if (object && !object->IsActive()) continue;
+            if (contact.type == CollisionType::Trigger && object) {
                 object->OnTrigger();
                 NotifyObject(*object, objectEvents::triggerEntered);
                 OnTrigger(*object);
-            } else if (!overlapping && object->IsTriggered() && object->IsActive()) {
-                object->ClearTrigger();
+            }
+            if (contact.type == CollisionType::Hazard) {
+                player.RecordDamageSource(contact.objectId);
+                events.Notify({objectEvents::hazardHit, ObjectNotificationId(contact.objectId),
+                               DialogueRevealMethod::None, contact.objectId});
+                if (object) object->OnTrigger();
+                if (!object || object->Lethal()) player.Kill();
+                else player.TakeDamage(object->Damage());
+                RequestSound(player.IsDead() ? playerSounds::death : playerSounds::hurt);
+                lastHealth = player.GetHealth();
+                if (player.IsDead()) {
+                    player.Reset(respawnPoint);
+                    scriptPlayerFrom = player.Bounds();
+                    trackingPlayerSounds = false;
+                    return true;
+                }
             }
         }
+        if (player.LastCollision().crushed) {
+            const auto &contacts = player.LastCollision().contacts;
+            player.RecordDamageSource(contacts.empty() ? "crush" : contacts.front().objectId);
+            player.Kill();
+            RequestSound(playerSounds::death);
+            player.Reset(respawnPoint);
+            scriptPlayerFrom = player.Bounds();
+            trackingPlayerSounds = false;
+            return true;
+        }
+        return false;
     }
 
     void Level::SubmitSprites(RenderQueue &queue, const Resources &resources) const {
@@ -279,10 +343,10 @@ namespace rage {
         if (!animation && state == "fall") animation = assets.Find(playerAssetId, "jump");
         if (!animation) animation = assets.Find(playerAssetId, "idle");
         if (!animation) animation = assets.Find(playerAssetId, "");
-        const Rectangle body = player.Bounds();
+        const Rectangle body = player.VisualBounds();
         if (player.Crouching() && !hasCrouchAnimation) {
             const Vector2 feet = SnapToPixels({body.x + body.width / 2, body.y + body.height});
-            const Rectangle standing = player.StandingBounds();
+            const Rectangle standing = player.VisualStandingBounds();
             const float heightScale = body.height / standing.height;
             // Until crouch art is supplied, compress standing art to match the hitbox.
             queue.Submit(animation ? animation->layer : Layer::Middle,
@@ -316,7 +380,7 @@ namespace rage {
     }
 
     void Level::UpdateCamera() {
-        const auto body = player.StandingBounds();
+        const auto body = player.VisualStandingBounds();
         const auto world = definition.world;
         auto follow = [](float target, float start, float length, float halfView) {
             if (length <= halfView * 2) return start + length / 2;
@@ -343,6 +407,11 @@ namespace rage {
         jumpParticles.SubmitSprites(queue, camera.zoom);
         SubmitPlayer(queue, resources);
         queue.Flush();
+        if (config.showHitboxes) {
+            collisions.DrawDebug();
+            scriptCollisions.DrawDebug();
+            DrawRectangleLinesEx(player.Bounds(), 1, MAGENTA);
+        }
         EndMode2D();
         EndScissorMode();
         DrawPlayerCard(resources, player, config);

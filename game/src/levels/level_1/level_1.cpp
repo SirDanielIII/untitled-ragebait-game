@@ -123,9 +123,6 @@ namespace rage {
             {4430.0f, 766.0f, 220.0f, 12.0f}
         }};
 
-        bool Intersects(Rectangle a, Rectangle b) {
-            return CheckCollisionRecs(a, b);
-        }
         float RoadDepth(float x) {
             const float t = std::clamp((rampStartX - x) / (rampStartX - rampEndX), 0.0f, 1.0f);
             return underpassDepth * t * t;
@@ -638,6 +635,7 @@ namespace rage {
 
     void Level1::OnReset() {
         timer.Reset();
+        nextHazardId = 1;
         ResetTraffic();
         for (auto& bird : birds) bird.Reset();
         birdCooldown = 0;
@@ -698,7 +696,7 @@ namespace rage {
             pig.fartSeconds -= dt;
             const Vector2 tail{pig.bounds.x + 89 * pigScale, pig.bounds.y + 20 * pigScale};
             if (pig.fartSeconds <= 0 && InCloudSection(tail.x)) {
-                gasPuffs.push_back({tail});
+                gasPuffs.push_back({tail, 0, nextHazardId++});
                 pig.fartSeconds = GetRandomValue(100, 165) / 100.0f;
             }
         }
@@ -725,7 +723,7 @@ namespace rage {
         const float entryY = pigRouteY[route] + amplitude * std::sin(phase);
         pigs.push_back({.bounds = {spawnX, entryY, 94 * pigScale, 38 * pigScale}, .route = route,
                         .waveAmplitude = amplitude, .waveRate = GetRandomValue(90, 210) / 100.0f,
-                        .wavePhase = phase, .fartSeconds = GetRandomValue(70, 130) / 100.0f});
+                        .wavePhase = phase, .fartSeconds = GetRandomValue(70, 130) / 100.0f, .id = nextHazardId++});
         pigSpawnSeconds = GetRandomValue(100, 150) / 100.0f;
     }
 
@@ -735,15 +733,9 @@ namespace rage {
         if (!anvil->IsActive() && !anvil->IsTriggered() && body.x + body.width >= anvil->Position().x - 45) {
             ActivateObject(anvilId);
             StartObjectFall(anvilId);
-            previousAnvilY = anvil->Position().y;
         }
         if (anvil->IsActive() && !Objects().IsActive(exitId) && !IsComplete()) {
-            Rectangle fall = anvil->Bounds();
-            const float currentY = fall.y;
-            fall.height += fall.y - previousAnvilY;
-            fall.y = previousAnvilY;
-            previousAnvilY = currentY;
-            if (Intersects(body, fall)) {
+            if (ScriptContact(anvilId, anvil->CollisionBounds())) {
                 Events().Notify({"level1.anvil_hit"});
                 return;
             }
@@ -753,7 +745,7 @@ namespace rage {
                 ActivateObject(exitId);
             }
         }
-        if (body.y >= 1520.0f) Respawn("level1.fall_hit");
+        if (ScriptContact("campus-fall", {0, 1564, 7200, 1000})) Respawn("level1.fall_hit");
     }
 
     void Level1::OnUpdate(float dt, const InputFrame& input) {
@@ -859,7 +851,7 @@ namespace rage {
                 }
             }
         }
-        if (Intersects(GetPlayer().Bounds(), rainbowGate)) {
+        if (ScriptContact("rainbow-slide", rainbowGate, CollisionType::Trigger)) {
             sliding = true;
             slideProgress = 0.0f;
             MutablePlayer().Reset(slideStart);
@@ -879,7 +871,7 @@ namespace rage {
         birdCooldown = std::max(0.0f, birdCooldown - dt);
         for (const auto& bird : birds) {
             const Rectangle b = bird.Bounds();
-            if (birdCooldown == 0 && Intersects(player, b)) {
+            if (ScriptContact("pole-bird-" + std::to_string(&bird - birds.data()), b, CollisionType::Trigger, birdCooldown == 0)) {
                 const bool left = player.x + player.width / 2 < b.x + b.width / 2;
                 MutablePlayer().Bounce({left ? -390.0f : 390.0f, -315.0f});
                 birdCooldown = 0.6f;
@@ -887,7 +879,9 @@ namespace rage {
             }
         }
         // Sidewalk: two stationary objects to jump over.
-        if (Intersects(player, trashCan) || Intersects(player, hydrant)) {
+        const bool trashHit = ScriptContact("trash-can", trashCan);
+        const bool hydrantHit = ScriptContact("hydrant", hydrant);
+        if (trashHit || hydrantHit) {
             Respawn("level1.obstacle_hit");
             return;
         }
@@ -895,7 +889,7 @@ namespace rage {
         if (!crashImpact) {
             for (const auto& car : traffic) {
                 const Rectangle visibleCar = VisibleRoadCar(car.bounds);
-                if (visibleCar.width > 0.0f && Intersects(player, visibleCar)) {
+                if (ScriptContact("traffic-" + std::to_string(&car - traffic.data()), visibleCar, CollisionType::Hazard, visibleCar.width > 0)) {
                     Respawn("level1.traffic_hit");
                     return;
                 }
@@ -905,10 +899,8 @@ namespace rage {
         for (std::size_t i = 0; i < wires.size(); ++i) {
             if (!WireLive(static_cast<int>(i), ElapsedSeconds())) continue;
             const Rectangle wire = wires[i];
-            const float feet = player.y + player.height;
-            const bool standingOnWire = GetPlayer().Grounded()
-                && player.x < wire.x + wire.width && player.x + player.width > wire.x
-                && std::abs(feet - wire.y) < 5.0f;
+            const bool standingOnWire = ScriptContact("live-wire-" + std::to_string(i),
+                {wire.x, wire.y - 4, wire.width, 4}, CollisionType::Hazard, GetPlayer().Grounded());
             if (standingOnWire) {
                 Respawn("level1.wire_hit");
                 return;
@@ -917,25 +909,28 @@ namespace rage {
         for (const auto& pig : pigs) {
             const Rectangle body{pig.bounds.x + 5 * pigScale, pig.bounds.y + 6 * pigScale,
                                  78 * pigScale, 29 * pigScale};
-            if (Intersects(player, body)) {
+            if (ScriptContact("pig-" + std::to_string(pig.id), body)) {
                 Respawn("level1.pig_hit");
                 return;
             }
         }
         for (const auto& puff : gasPuffs) {
-            if (CheckCollisionCircleRec(puff.center, GasRadius(puff.age), player)) {
+            const float radius = GasRadius(puff.age);
+            if (ScriptContact("pig-gas-" + std::to_string(puff.id),
+                {puff.center.x - radius, puff.center.y - radius, 2 * radius, 2 * radius})) {
                 Respawn("level1.pig_gas_hit");
                 return;
             }
         }
         for (const auto& star : stars) {
-            if (star.falling && Intersects(player, {star.x - starHitWidth / 2, star.y - 18.0f, starHitWidth, 38.0f})) {
+            if (ScriptContact("star-" + std::to_string(&star - stars.data()),
+                {star.x - starHitWidth / 2, star.y - 18.0f, starHitWidth, 38.0f}, CollisionType::Hazard, star.falling)) {
                 Respawn("level1.star_hit");
                 return;
             }
         }
         // No collision floor exists beneath the suspended sky section.
-        if (GetPlayer().Position().y >= 1520.0f) {
+        if (ScriptContact("sky-fall", {0, 1564, 7200, 1000})) {
             Respawn("level1.fall_hit");
         }
     }

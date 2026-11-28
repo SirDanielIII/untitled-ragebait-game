@@ -62,7 +62,7 @@ void TestManagerAndObjects() {
     platform->Update(1.0f);
     Check(platform->Position().x == 100, "Moving object did not move");
     platform->Update(1.5f);
-    Check(platform->Position().x == 200 && platform->Velocity().x < 0,
+    Check(platform->Position().x == 150 && platform->Velocity().x < 0,
           "Moving object did not reverse at the end of its range");
     platform->Reset();
     Check(platform->Position().x == 0 && platform->Velocity().x == 100,
